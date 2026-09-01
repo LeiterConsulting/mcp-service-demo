@@ -2,6 +2,7 @@ const state = {
   view: "briefing",
   health: null,
   splunkStatus: null,
+  splunkSettings: null,
   tools: [],
   tickets: [],
   activeTicket: null,
@@ -94,6 +95,125 @@ function renderConnectionStatus() {
   $("#data-source-label").innerHTML = live
     ? "<span></span> Live protocol · Real Splunk endpoint"
     : "<span></span> Live protocol · Fixture telemetry";
+}
+
+function renderSplunkSettings(settings) {
+  state.splunkSettings = settings;
+  const mode = settings.data_mode || "fixture";
+  const modeInput = $(`input[name="data-mode"][value="${mode}"]`);
+  if (modeInput) modeInput.checked = true;
+  $("#settings-source").textContent = settings.source || "Environment defaults";
+  $("#splunk-rest-url").value = settings.rest_url || "";
+  $("#splunk-rest-token").value = "";
+  $("#splunk-rest-token").placeholder = settings.rest_token_configured
+    ? "Configured — leave blank to keep"
+    : "Enter a Splunk access token";
+  $("#rest-token-hint").textContent = settings.rest_token_configured
+    ? "A token is configured. Enter a value only to replace it."
+    : "Required for live Splunk unless basic auth is supplied by the environment.";
+  $("#splunk-token-scheme").value = settings.rest_token_scheme || "Bearer";
+  $("#splunk-rest-verify").checked = settings.rest_verify_ssl !== false;
+  $("#splunk-rest-ca").value = settings.rest_ca_bundle_path || "";
+  $("#splunk-hec-url").value = settings.hec_url || "";
+  $("#splunk-hec-token").value = "";
+  $("#splunk-hec-token").placeholder = settings.hec_token_configured
+    ? "Configured — leave blank to keep"
+    : "Enter the demo HEC token";
+  $("#hec-token-hint").textContent = settings.hec_token_configured
+    ? "A HEC token is configured. Enter a value only to replace it."
+    : "Required to publish or reset the scenario in live mode.";
+  $("#splunk-hec-verify").checked = settings.hec_verify_ssl !== false;
+  $("#splunk-hec-ca").value = settings.hec_ca_bundle_path || "";
+  const contract = settings.contract || {};
+  $("#contract-values").innerHTML = [
+    `app=${contract.app || "—"}`,
+    `index=${contract.index || "—"}`,
+    `sourcetype=${contract.sourcetype || "—"}`,
+    `scenario=${contract.scenario_id || "—"}`,
+  ]
+    .map((value) => `<span>${escapeHtml(value)}</span>`)
+    .join("");
+}
+
+function splunkSettingsPayload() {
+  return {
+    data_mode: $('input[name="data-mode"]:checked')?.value || "fixture",
+    rest_url: $("#splunk-rest-url").value.trim(),
+    rest_token: $("#splunk-rest-token").value.trim(),
+    rest_token_scheme: $("#splunk-token-scheme").value,
+    rest_verify_ssl: $("#splunk-rest-verify").checked,
+    rest_ca_bundle_path: $("#splunk-rest-ca").value.trim(),
+    hec_url: $("#splunk-hec-url").value.trim(),
+    hec_token: $("#splunk-hec-token").value.trim(),
+    hec_verify_ssl: $("#splunk-hec-verify").checked,
+    hec_ca_bundle_path: $("#splunk-hec-ca").value.trim(),
+  };
+}
+
+function showConnectionResult(message, isError = false) {
+  const result = $("#connection-result");
+  result.hidden = false;
+  result.classList.toggle("error", isError);
+  result.textContent = message;
+}
+
+async function openSplunkSettings() {
+  const dialog = $("#splunk-settings-dialog");
+  $("#connection-result").hidden = true;
+  dialog.showModal();
+  try {
+    renderSplunkSettings(await api("/api/settings/splunk"));
+  } catch (error) {
+    showConnectionResult(`Settings could not be loaded: ${error.message}`, true);
+  }
+}
+
+async function testSplunkConnection() {
+  const button = $("#test-splunk-button");
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Testing…";
+  $("#connection-result").hidden = true;
+  try {
+    const result = await api("/api/settings/splunk/test", {
+      method: "POST",
+      body: JSON.stringify(splunkSettingsPayload()),
+    });
+    showConnectionResult(result.message, result.status !== "success");
+  } catch (error) {
+    showConnectionResult(`Connection test failed: ${error.message}`, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+async function saveSplunkConnection(event) {
+  event.preventDefault();
+  const button = $("#save-splunk-button");
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Saving…";
+  try {
+    const result = await api("/api/settings/splunk", {
+      method: "PUT",
+      body: JSON.stringify(splunkSettingsPayload()),
+    });
+    renderSplunkSettings(result.settings);
+    state.health = await api("/api/health");
+    state.splunkStatus = await api("/api/splunk/status").catch((error) => ({
+      ready: false,
+      error: error.message,
+    }));
+    renderConnectionStatus();
+    $("#splunk-settings-dialog").close();
+    toast("Splunk connection saved");
+  } catch (error) {
+    showConnectionResult(`Connection could not be saved: ${error.message}`, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
 }
 
 function renderChat() {
@@ -345,6 +465,13 @@ function toast(message, isError = false) {
 
 function bindEvents() {
   $$('[data-view]').forEach((button) => button.addEventListener("click", () => navigate(button.dataset.view)));
+  $("#settings-button").addEventListener("click", openSplunkSettings);
+  $("#settings-close").addEventListener("click", () => $("#splunk-settings-dialog").close());
+  $("#splunk-settings-dialog").addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) event.currentTarget.close();
+  });
+  $("#test-splunk-button").addEventListener("click", testSplunkConnection);
+  $("#splunk-settings-form").addEventListener("submit", saveSplunkConnection);
   $("#reset-button").addEventListener("click", resetDemo);
   $("#chat-form").addEventListener("submit", (event) => {
     event.preventDefault();

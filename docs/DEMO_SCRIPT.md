@@ -2,6 +2,13 @@
 
 This is designed as an 8–10 minute customer conversation, not a feature tour.
 
+## Before the room joins
+
+Open **Splunk setup**. In fixture mode, use **Test search connection** to confirm the local scenario
+is ready. In live mode, confirm the search test identifies the Splunk server and reports an active
+demo run. The panel keeps tokens masked, so it is safe to show the connection shape without
+displaying credentials.
+
 ## 1. Explain MCP in one minute
 
 Open **MCP in 60 seconds**.

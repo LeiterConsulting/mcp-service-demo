@@ -4,13 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcp-service-demo"
-version = "0.2.0"
+version = "0.3.0"
 description = "A small, repeatable demo of an agent using MCP to investigate Splunk data and enrich an IT service ticket."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Leiter Consulting" }]
 dependencies = [
+  "cryptography>=45,<51",
   "fastapi>=0.116,<1",
   "httpx>=0.28,<1",
   "mcp>=2.1,<3",

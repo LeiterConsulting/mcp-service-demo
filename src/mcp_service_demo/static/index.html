@@ -8,7 +8,7 @@
       content="A live demonstration of an agent using MCP to investigate Splunk telemetry and enrich a service ticket."
     />
     <title>MCP Service Demo</title>
-    <link rel="stylesheet" href="/static/styles.css?v=0.2.0" />
+    <link rel="stylesheet" href="/static/styles.css?v=0.3.0" />
   </head>
   <body>
     <div class="app-shell">
@@ -34,6 +34,9 @@
             <span class="status-dot"></span>
             <span>Connecting</span>
           </span>
+          <button class="button ghost small" id="settings-button" title="Configure the Splunk connection">
+            <span aria-hidden="true">⚙</span> Splunk setup
+          </button>
           <button class="button ghost small" id="reset-button" title="Restore the original scenario">
             Reset demo
           </button>
@@ -215,8 +218,129 @@
         </section>
       </main>
 
+      <dialog class="settings-dialog" id="splunk-settings-dialog" aria-labelledby="settings-title">
+        <form class="settings-shell" id="splunk-settings-form">
+          <header class="settings-header">
+            <div class="settings-mark" aria-hidden="true">S</div>
+            <div>
+              <span class="workspace-kicker">Demo environment</span>
+              <h2 id="settings-title">Splunk connection</h2>
+              <p>Choose the telemetry source behind the Splunk Operations MCP server.</p>
+            </div>
+            <button type="button" class="settings-close" id="settings-close" aria-label="Close settings">×</button>
+          </header>
+
+          <div class="settings-body">
+            <section class="settings-section source-section">
+              <div class="settings-section-heading">
+                <div>
+                  <span class="settings-step">01 · Source</span>
+                  <h3>Where should the evidence come from?</h3>
+                </div>
+                <span class="settings-source" id="settings-source">Environment defaults</span>
+              </div>
+              <div class="source-options" role="radiogroup" aria-label="Splunk telemetry source">
+                <label class="source-option">
+                  <input type="radio" name="data-mode" value="fixture" />
+                  <span class="source-option-dot"></span>
+                  <span><b>Fixture telemetry</b><small>Zero setup. Repeatable local event data.</small></span>
+                </label>
+                <label class="source-option">
+                  <input type="radio" name="data-mode" value="live" />
+                  <span class="source-option-dot"></span>
+                  <span><b>Live Splunk</b><small>Real REST searches and HEC ingestion.</small></span>
+                </label>
+              </div>
+            </section>
+
+            <div class="settings-columns">
+              <section class="settings-section">
+                <div class="settings-section-heading">
+                  <div>
+                    <span class="settings-step">02 · Search</span>
+                    <h3>Splunk search access</h3>
+                  </div>
+                  <span class="settings-role">Read only</span>
+                </div>
+                <p class="settings-help">The MCP server runs deterministic SPL through Splunk's management API.</p>
+
+                <label class="field-label" for="splunk-rest-url">Management API URL</label>
+                <input class="settings-input" id="splunk-rest-url" type="url" placeholder="https://splunk.example.com:8089" required />
+
+                <div class="field-grid token-grid">
+                  <div>
+                    <label class="field-label" for="splunk-rest-token">Access token</label>
+                    <input class="settings-input" id="splunk-rest-token" type="password" autocomplete="new-password" />
+                    <small class="field-hint" id="rest-token-hint">Leave blank to keep the configured token.</small>
+                  </div>
+                  <div>
+                    <label class="field-label" for="splunk-token-scheme">Token type</label>
+                    <select class="settings-input" id="splunk-token-scheme">
+                      <option value="Bearer">Bearer / JWT</option>
+                      <option value="Splunk">Splunk session</option>
+                    </select>
+                  </div>
+                </div>
+
+                <label class="check-row" for="splunk-rest-verify">
+                  <input id="splunk-rest-verify" type="checkbox" />
+                  <span><b>Verify TLS certificate</b><small>Recommended for every customer environment.</small></span>
+                </label>
+
+                <label class="field-label" for="splunk-rest-ca">Custom CA bundle <span>optional</span></label>
+                <input class="settings-input" id="splunk-rest-ca" type="text" placeholder="/path/to/customer-ca.pem" />
+              </section>
+
+              <section class="settings-section">
+                <div class="settings-section-heading">
+                  <div>
+                    <span class="settings-step">03 · Publish</span>
+                    <h3>Scenario publisher</h3>
+                  </div>
+                  <span class="settings-role write">HEC write</span>
+                </div>
+                <p class="settings-help">Reset demo publishes a fresh checkout incident with a unique run ID.</p>
+
+                <label class="field-label" for="splunk-hec-url">HTTP Event Collector URL</label>
+                <input class="settings-input" id="splunk-hec-url" type="url" placeholder="https://splunk.example.com:8088" />
+
+                <label class="field-label" for="splunk-hec-token">HEC token</label>
+                <input class="settings-input" id="splunk-hec-token" type="password" autocomplete="new-password" />
+                <small class="field-hint" id="hec-token-hint">Leave blank to keep the configured token.</small>
+
+                <label class="check-row" for="splunk-hec-verify">
+                  <input id="splunk-hec-verify" type="checkbox" />
+                  <span><b>Verify TLS certificate</b><small>Uses the HEC host's certificate chain.</small></span>
+                </label>
+
+                <label class="field-label" for="splunk-hec-ca">Custom CA bundle <span>optional</span></label>
+                <input class="settings-input" id="splunk-hec-ca" type="text" placeholder="/path/to/customer-ca.pem" />
+              </section>
+            </div>
+
+            <section class="contract-strip">
+              <div>
+                <span class="settings-step">Companion app contract</span>
+                <p>The demo scopes every search to this known dataset.</p>
+              </div>
+              <div class="contract-values" id="contract-values"></div>
+            </section>
+
+            <div class="connection-result" id="connection-result" role="status" aria-live="polite" hidden></div>
+          </div>
+
+          <footer class="settings-footer">
+            <p>Saved tokens are encrypted locally and never returned by the API.</p>
+            <div>
+              <button class="button secondary" type="button" id="test-splunk-button">Test search connection</button>
+              <button class="button primary" type="submit" id="save-splunk-button">Save connection</button>
+            </div>
+          </footer>
+        </form>
+      </dialog>
+
       <div class="toast-region" id="toast-region" aria-live="polite"></div>
     </div>
-    <script src="/static/app.js?v=0.2.0" defer></script>
+    <script src="/static/app.js?v=0.3.0" defer></script>
   </body>
 </html>

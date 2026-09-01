@@ -15,7 +15,7 @@ splunk_mcp = MCPServer(
         "Use these read-only tools to investigate service behavior. Start with service health, "
         "then narrow with log search or a trace. Cite the evidence_ref values in conclusions."
     ),
-    version="0.2.0",
+    version="0.3.0",
 )
 
 
@@ -93,7 +93,6 @@ def trace_request(trace_id: str) -> dict[str, Any]:
 
 def run_splunk_server() -> None:
     settings = get_settings()
-    _backend()
     splunk_mcp.run(
         transport="streamable-http",
         host=settings.splunk_mcp_host,

@@ -38,6 +38,17 @@ query is constrained by index, source type, scenario, and run ID. This keeps hea
 errors, deployments, and traces repeatable even when the same Splunk instance has hosted many
 rehearsals.
 
+## Runtime connection settings
+
+Environment variables establish the default Splunk profile. The **Splunk setup** panel can save an
+encrypted override containing the data mode, management API connection, HEC connection, TLS
+verification, and optional CA bundle paths. Tokens are masked in API responses, and blank secret
+fields preserve the existing value.
+
+The web host and Splunk MCP server are separate processes, so both resolve the effective profile
+from the same encrypted file in the `data` directory. The MCP server does this when a tool is
+called; a saved profile therefore takes effect without restarting the processes.
+
 ## Real versus synthetic
 
 Real during a live-mode demo:

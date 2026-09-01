@@ -1,0 +1,224 @@
+from __future__ import annotations
+
+import json
+import os
+from collections.abc import Mapping
+from dataclasses import replace
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
+
+from cryptography.fernet import Fernet, InvalidToken
+
+from .config import Settings
+
+MASK = "***"
+_EDITABLE_FIELDS = {
+    "data_mode",
+    "rest_url",
+    "rest_token_scheme",
+    "rest_verify_ssl",
+    "rest_ca_bundle_path",
+    "hec_url",
+    "hec_verify_ssl",
+    "hec_ca_bundle_path",
+}
+_SECRET_FIELDS = {"rest_token", "hec_token"}
+
+
+class SplunkConnectionStore:
+    """Encrypted, process-shared overrides for the demo's active Splunk connection."""
+
+    def __init__(self, config_path: Path, key_path: Path):
+        self.config_path = config_path
+        self.key_path = key_path
+
+    @classmethod
+    def for_settings(cls, settings: Settings) -> SplunkConnectionStore:
+        data_directory = settings.database_path.parent
+        return cls(
+            Path(
+                os.getenv(
+                    "DEMO_SPLUNK_CONFIG_PATH",
+                    data_directory / "splunk-connection.enc",
+                )
+            ),
+            Path(
+                os.getenv(
+                    "DEMO_SPLUNK_CONFIG_KEY_PATH",
+                    data_directory / ".splunk-connection.key",
+                )
+            ),
+        )
+
+    @property
+    def configured(self) -> bool:
+        return self.config_path.is_file()
+
+    def load(self) -> dict[str, Any]:
+        if not self.config_path.is_file():
+            return {}
+        if not self.key_path.is_file():
+            raise RuntimeError(
+                f"Saved Splunk settings exist, but their key is missing: {self.key_path}"
+            )
+        try:
+            key = self.key_path.read_bytes()
+            decrypted = Fernet(key).decrypt(self.config_path.read_bytes())
+            payload = json.loads(decrypted.decode("utf-8"))
+        except (InvalidToken, ValueError, json.JSONDecodeError) as exc:
+            raise RuntimeError("Saved Splunk settings could not be decrypted") from exc
+        if not isinstance(payload, dict):
+            raise RuntimeError("Saved Splunk settings have an invalid format")
+        return payload
+
+    def apply(self, base: Settings, payload: Mapping[str, Any] | None = None) -> Settings:
+        saved = dict(payload) if payload is not None else self.load()
+        if not saved:
+            return base
+
+        data_mode = _data_mode(saved.get("data_mode", base.splunk_data_mode))
+        rest_url = _url(saved.get("rest_url", base.splunk_rest_url), "Splunk API URL")
+        rest_scheme = _token_scheme(
+            saved.get("rest_token_scheme", base.splunk_rest_token_scheme)
+        )
+        rest_verify = _verify_value(
+            saved.get("rest_verify_ssl", base.splunk_rest_verify is not False),
+            saved.get("rest_ca_bundle_path"),
+        )
+        hec_url_value = saved.get("hec_url", base.splunk_hec_url)
+        hec_url = _optional_url(hec_url_value, "HEC URL")
+        hec_verify = _verify_value(
+            saved.get("hec_verify_ssl", base.splunk_hec_verify is not False),
+            saved.get("hec_ca_bundle_path"),
+        )
+
+        return replace(
+            base,
+            splunk_data_mode=data_mode,
+            splunk_rest_url=rest_url.rstrip("/"),
+            splunk_rest_token=_secret(saved, "rest_token", base.splunk_rest_token),
+            splunk_rest_token_scheme=rest_scheme,
+            splunk_rest_verify=rest_verify,
+            splunk_hec_url=hec_url.rstrip("/") if hec_url else None,
+            splunk_hec_token=_secret(saved, "hec_token", base.splunk_hec_token),
+            splunk_hec_verify=hec_verify,
+        )
+
+    def preview(self, base: Settings, update: Mapping[str, Any]) -> Settings:
+        return self.apply(base, self._merged_payload(update))
+
+    def save(self, base: Settings, update: Mapping[str, Any]) -> Settings:
+        payload = self._merged_payload(update)
+        effective = self.apply(base, payload)
+        self._write(payload)
+        return effective
+
+    def safe_export(self, base: Settings) -> dict[str, Any]:
+        effective = self.apply(base)
+        rest_ca = (
+            str(effective.splunk_rest_verify)
+            if isinstance(effective.splunk_rest_verify, str)
+            else None
+        )
+        hec_ca = (
+            str(effective.splunk_hec_verify)
+            if isinstance(effective.splunk_hec_verify, str)
+            else None
+        )
+        return {
+            "source": "saved profile" if self.configured else "environment defaults",
+            "data_mode": effective.splunk_data_mode,
+            "rest_url": effective.splunk_rest_url,
+            "rest_token": MASK if effective.splunk_rest_token else "",
+            "rest_token_configured": bool(effective.splunk_rest_token),
+            "rest_token_scheme": effective.splunk_rest_token_scheme,
+            "rest_verify_ssl": effective.splunk_rest_verify is not False,
+            "rest_ca_bundle_path": rest_ca,
+            "hec_url": effective.splunk_hec_url or "",
+            "hec_token": MASK if effective.splunk_hec_token else "",
+            "hec_token_configured": bool(effective.splunk_hec_token),
+            "hec_verify_ssl": effective.splunk_hec_verify is not False,
+            "hec_ca_bundle_path": hec_ca,
+            "contract": {
+                "app": effective.splunk_app,
+                "owner": effective.splunk_owner,
+                "index": effective.splunk_index,
+                "sourcetype": effective.splunk_sourcetype,
+                "scenario_id": effective.splunk_scenario_id,
+            },
+        }
+
+    def _merged_payload(self, update: Mapping[str, Any]) -> dict[str, Any]:
+        current = self.load()
+        for field in _EDITABLE_FIELDS:
+            if field in update and update[field] is not None:
+                current[field] = update[field]
+        for field in _SECRET_FIELDS:
+            value = str(update.get(field) or "").strip()
+            if value and value != MASK:
+                current[field] = value
+        if update.get("clear_rest_token"):
+            current.pop("rest_token", None)
+        if update.get("clear_hec_token"):
+            current.pop("hec_token", None)
+        current["version"] = 1
+        return current
+
+    def _write(self, payload: Mapping[str, Any]) -> None:
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        self.key_path.parent.mkdir(parents=True, exist_ok=True)
+        if not self.key_path.is_file():
+            self.key_path.write_bytes(Fernet.generate_key())
+            _secure_file(self.key_path)
+        encrypted = Fernet(self.key_path.read_bytes()).encrypt(
+            json.dumps(dict(payload), sort_keys=True).encode("utf-8")
+        )
+        temporary_path = self.config_path.with_suffix(self.config_path.suffix + ".tmp")
+        temporary_path.write_bytes(encrypted)
+        _secure_file(temporary_path)
+        temporary_path.replace(self.config_path)
+        _secure_file(self.config_path)
+
+
+def _secret(saved: Mapping[str, Any], name: str, fallback: str | None) -> str | None:
+    value = str(saved.get(name) or "").strip()
+    return value or fallback
+
+
+def _data_mode(value: Any) -> str:
+    normalized = str(value or "fixture").strip().lower()
+    if normalized not in {"fixture", "live"}:
+        raise ValueError("Data source must be 'fixture' or 'live'")
+    return normalized
+
+
+def _token_scheme(value: Any) -> str:
+    normalized = str(value or "Bearer").strip().title()
+    if normalized not in {"Bearer", "Splunk"}:
+        raise ValueError("REST token type must be 'Bearer' or 'Splunk'")
+    return normalized
+
+
+def _url(value: Any, label: str) -> str:
+    normalized = str(value or "").strip()
+    parsed = urlparse(normalized)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError(f"{label} must be a complete http:// or https:// URL")
+    return normalized
+
+
+def _optional_url(value: Any, label: str) -> str | None:
+    normalized = str(value or "").strip()
+    return _url(normalized, label) if normalized else None
+
+
+def _verify_value(verify_ssl: Any, ca_bundle_path: Any) -> bool | str:
+    verify = bool(verify_ssl)
+    ca_path = str(ca_bundle_path or "").strip()
+    return ca_path if verify and ca_path else verify
+
+
+def _secure_file(path: Path) -> None:
+    if os.name != "nt":
+        path.chmod(0o600)

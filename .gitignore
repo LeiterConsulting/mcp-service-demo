@@ -9,3 +9,7 @@ dist/
 *.swp
 data/*.db
 data/*.db-*
+data/*.enc
+data/*.key
+data/*.tmp
+data/.splunk-connection.key

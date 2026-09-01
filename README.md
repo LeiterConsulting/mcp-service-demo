@@ -33,8 +33,14 @@ Open [http://127.0.0.1:8100](http://127.0.0.1:8100).
 An OpenAI API key is optional. Without one, the app uses a deterministic guided agent that still discovers and invokes the live MCP tools. With `OPENAI_API_KEY` configured, free-form chat uses an OpenAI model to select and sequence the same tools.
 
 The default `SPLUNK_DATA_MODE=fixture` is the zero-dependency path. To use a real endpoint,
-install the companion Splunk app, configure REST and HEC credentials, publish the scenario, and
-switch to live mode. See [`docs/SPLUNK_SETUP.md`](docs/SPLUNK_SETUP.md).
+install the companion Splunk app, open **Splunk setup** in the demo header, enter the REST and HEC
+connections, and switch to live mode. The same values can still be supplied through environment
+variables. See [`docs/SPLUNK_SETUP.md`](docs/SPLUNK_SETUP.md).
+
+The settings experience mirrors the larger discovery tool's useful connection pattern—endpoint,
+masked token, TLS verification, optional CA bundle, and a connection test—using this demo's
+language and visual design. Saved overrides are encrypted in the persistent `data` directory and
+become available to the Splunk MCP server without a restart.
 
 ### Docker alternative
 
@@ -72,6 +78,9 @@ mcp-service-demo ticket-mcp   # run only the ticket MCP server
 mcp-service-demo web          # run only the browser/API host
 pytest                        # run the test suite
 ```
+
+CLI commands resolve the same active Splunk profile saved through the browser, with environment
+variables serving as defaults.
 
 ## Demo boundaries
 

@@ -76,7 +76,7 @@ class Settings:
         return bool(self.splunk_hec_url and self.splunk_hec_token)
 
 
-def get_settings() -> Settings:
+def get_environment_settings() -> Settings:
     splunk_port = int(os.getenv("SPLUNK_MCP_PORT", "8101"))
     ticket_port = int(os.getenv("TICKET_MCP_PORT", "8102"))
     splunk_data_mode = os.getenv("SPLUNK_DATA_MODE", "fixture").strip().lower()
@@ -121,3 +121,11 @@ def get_settings() -> Settings:
         openai_api_key=os.getenv("OPENAI_API_KEY") or None,
         openai_model=os.getenv("OPENAI_MODEL", "gpt-5-mini"),
     )
+
+
+def get_settings() -> Settings:
+    """Return environment defaults with any saved UI connection profile applied."""
+    base = get_environment_settings()
+    from .connection_settings import SplunkConnectionStore
+
+    return SplunkConnectionStore.for_settings(base).apply(base)

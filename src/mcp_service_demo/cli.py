@@ -104,8 +104,8 @@ def build_parser() -> argparse.ArgumentParser:
     package_parser.add_argument(
         "--output",
         type=Path,
-        default=Path("dist/mcp_service_demo-0.2.0.tar.gz"),
-        help="archive path (default: dist/mcp_service_demo-0.2.0.tar.gz)",
+        default=Path("dist/mcp_service_demo-0.3.0.tar.gz"),
+        help="archive path (default: dist/mcp_service_demo-0.3.0.tar.gz)",
     )
     return parser
 
