@@ -1,0 +1,4 @@
+<nav search_view="search">
+  <view name="mcp_demo" default="true" />
+  <view name="search" />
+</nav>

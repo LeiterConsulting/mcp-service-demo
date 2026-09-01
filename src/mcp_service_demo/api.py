@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,7 @@ from pydantic import BaseModel, Field
 from .agent import DemoAgent
 from .config import get_settings
 from .mcp_client import MCPBroker
+from .scenario import seed_splunk_scenario
 from .storage import DemoStore
 
 settings = get_settings()
@@ -22,7 +24,7 @@ agent = DemoAgent(settings, broker)
 app = FastAPI(
     title="MCP Service Demo",
     description="Agent host and service-desk API for the Splunk MCP demonstration.",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 static_dir = Path(__file__).parent / "static"
@@ -43,12 +45,21 @@ async def health() -> dict[str, Any]:
     return {
         "status": "ok",
         "agent_mode": settings.agent_mode,
+        "splunk_data_mode": settings.splunk_data_mode,
         "scenario": "checkout-degradation",
         "mcp_servers": {
             "splunk": settings.splunk_mcp_url,
             "tickets": settings.ticket_mcp_url,
         },
     }
+
+
+@app.get("/api/splunk/status")
+async def splunk_status() -> dict[str, Any]:
+    try:
+        return await broker.call("splunk", "get_splunk_status", {})
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Splunk is not ready: {exc}") from exc
 
 
 @app.get("/api/mcp/tools")
@@ -116,7 +127,12 @@ async def investigate_ticket(ticket_id: str, request: InvestigateRequest) -> dic
 
 @app.post("/api/demo/reset")
 async def reset_demo() -> dict[str, Any]:
-    return store.reset()
+    try:
+        if settings.splunk_data_mode == "live":
+            return await asyncio.to_thread(seed_splunk_scenario, settings, store)
+        return store.reset()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Unable to reset the demo: {exc}") from exc
 
 
 @app.get("/", include_in_schema=False)

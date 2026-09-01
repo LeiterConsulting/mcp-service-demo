@@ -1,13 +1,14 @@
 const state = {
   view: "briefing",
   health: null,
+  splunkStatus: null,
   tools: [],
   tickets: [],
   activeTicket: null,
   chat: [
     {
       role: "agent",
-      text: "I can investigate the synthetic Splunk environment and work with the service desk through live MCP tools. Try asking whether **checkout-api** is healthy, or ask me to investigate **INC-1042**.",
+      text: "I can investigate the configured Splunk environment and work with the service desk through live MCP tools. Try asking whether **checkout-api** is healthy, or ask me to investigate **INC-1042**.",
       mode: "ready",
     },
   ],
@@ -68,6 +69,7 @@ function navigate(view) {
 
 function renderToolCatalog() {
   $("#tool-count").textContent = state.tools.length || "—";
+  $("#hero-tool-count").textContent = state.tools.length || "—";
   $("#mini-tool-list").innerHTML = state.tools.length
     ? state.tools
         .map(
@@ -76,6 +78,22 @@ function renderToolCatalog() {
         )
         .join("")
     : '<span class="mini-tool">MCP servers unavailable</span>';
+}
+
+function renderConnectionStatus() {
+  const pill = $("#connection-pill");
+  const live = state.health?.splunk_data_mode === "live";
+  const splunkReady = state.splunkStatus?.ready;
+  pill.classList.remove("online", "offline");
+  pill.classList.add(splunkReady ? "online" : "offline");
+  pill.querySelector("span:last-child").textContent = splunkReady
+    ? `2 MCP servers · Splunk ${live ? "live" : "fixture"}`
+    : live
+      ? "Splunk needs a scenario"
+      : "MCP servers online";
+  $("#data-source-label").innerHTML = live
+    ? "<span></span> Live protocol · Real Splunk endpoint"
+    : "<span></span> Live protocol · Fixture telemetry";
 }
 
 function renderChat() {
@@ -300,6 +318,7 @@ async function resetDemo() {
   state.busy = true;
   try {
     await api("/api/demo/reset", { method: "POST", body: "{}" });
+    state.splunkStatus = await api("/api/splunk/status").catch(() => state.splunkStatus);
     state.investigation = null;
     state.timeline = [];
     state.chat = [
@@ -307,6 +326,7 @@ async function resetDemo() {
     ];
     await refreshTickets("INC-1042");
     renderChat();
+    renderConnectionStatus();
     toast("Demo scenario restored");
   } catch (error) {
     toast(error.message, true);
@@ -351,17 +371,17 @@ async function bootstrap() {
   bindEvents();
   const initialView = ["briefing", "agent", "desk"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "briefing";
   try {
-    const [health, toolPayload, ticketPayload] = await Promise.all([
+    const [health, toolPayload, ticketPayload, splunkStatus] = await Promise.all([
       api("/api/health"),
       api("/api/mcp/tools"),
       api("/api/tickets"),
+      api("/api/splunk/status").catch((error) => ({ ready: false, error: error.message })),
     ]);
     state.health = health;
+    state.splunkStatus = splunkStatus;
     state.tools = toolPayload.tools;
     state.tickets = ticketPayload.tickets;
-    const pill = $("#connection-pill");
-    pill.classList.add("online");
-    pill.querySelector("span:last-child").textContent = "2 MCP servers online";
+    renderConnectionStatus();
     $("#agent-mode").textContent = health.agent_mode === "openai" ? "OpenAI + MCP" : "Guided MCP";
     renderToolCatalog();
     renderTicketList();

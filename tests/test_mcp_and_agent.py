@@ -20,7 +20,7 @@ async def test_broker_discovers_and_calls_both_mcp_servers(tmp_path, monkeypatch
     )
     ticket = await broker.call("tickets", "get_ticket", {"ticket_id": "INC-1042"})
 
-    assert len(tools) == 9
+    assert len(tools) == 10
     assert {tool.server for tool in tools} == {"splunk", "tickets"}
     assert health["state"] == "degraded"
     assert ticket["service"] == "checkout-api"

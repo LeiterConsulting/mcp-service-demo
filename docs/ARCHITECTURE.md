@@ -1,46 +1,65 @@
 # Architecture
 
-The demo uses three local processes and one shared SQLite scenario store.
+The agent always talks to two independent MCP servers. Only the telemetry adapter changes between
+fixture and live modes.
 
 ```text
 Browser
    │ REST
    ▼
 Agent host :8100
-   ├── Streamable HTTP MCP ──► Splunk Operations :8101 ──┐
-   └── Streamable HTTP MCP ──► Northstar Desk :8102 ─────┤
-                                                         ▼
-                                                synthetic demo.db
+   ├── Streamable HTTP MCP ──► Splunk Operations :8101
+   │                              ├── fixture ──► local event rows
+   │                              └── live ─────► Splunk REST search API
+   │                                                   ▲
+   │                                            scenario data
+   │                                                   │ HEC
+   └── Streamable HTTP MCP ──► Northstar Desk :8102    │
+                                      │                 │
+                                      ▼                 │
+                              ticket SQLite store ──► scenario loader
 ```
 
 ## Why two MCP servers
 
-The story is more useful when MCP is visibly a protocol between an agent host and independent systems. Splunk tools are read-only. Ticket tools include reads and explicitly gated writes. This resembles an enterprise deployment without requiring ServiceNow or a live Splunk instance for every presentation.
+The story is more useful when MCP is visibly a protocol between an agent host and independent
+systems. Splunk tools are read-only. Ticket tools include reads and explicitly gated writes. The
+agent joins context at runtime: it reads the service named by a ticket, investigates that service
+in Splunk, then sends its sourced result back to the ticket system.
+
+## Deterministic live data
+
+The scenario loader is part of this repository, not part of the agent. It resets the ticket store,
+generates the known checkout degradation, and publishes the event stream through HEC. Every
+publication receives a unique `demo_run_id`.
+
+The Splunk adapter first finds the newest run for `checkout-degradation-v1`. Every subsequent SPL
+query is constrained by index, source type, scenario, and run ID. This keeps health metrics,
+errors, deployments, and traces repeatable even when the same Splunk instance has hosted many
+rehearsals.
 
 ## Real versus synthetic
 
-Real during the demo:
+Real during a live-mode demo:
 
-- MCP tool discovery
-- Streamable HTTP transport
-- typed tool inputs
-- tool invocation and structured return values
-- metrics calculated from event rows
-- ticket database writes and status changes
-- optional model-driven tool selection
+- MCP discovery, Streamable HTTP transport, typed arguments, and tool results;
+- Splunk HEC ingestion and REST searches using deterministic SPL;
+- SQLite ticket reads, work-note writes, and status changes through the ticket MCP server;
+- optional model-driven tool selection.
 
 Synthetic by design:
 
-- the company, users, services, and tickets
-- the event dataset
-- the `splunk://` evidence links
+- the company, users, services, tickets, and incident event content;
+- the Northstar service-desk visual design;
+- the `splunk://` evidence references, which are portable references rather than clickable Splunk
+  deep links.
 
-## Replacement seams
+## Integration seams
 
-The two server modules are the intended integration seams:
+- `splunk_backend.py` implements fixture and REST-backed telemetry behind one interface.
+- `scenario.py` handles HEC publication and coordinated resets.
+- `servers/tickets.py` is the seam for a future ServiceNow, Jira Service Management, Zammad, or
+  other ticket adapter.
 
-- `servers/splunk.py`: replace `DemoStore` calls with the Splunk SDK or REST API.
-- `servers/tickets.py`: replace `DemoStore` calls with ServiceNow, Jira Service Management, Zammad, or another ticket API.
-
-The agent host and browser workflow do not need to change when those adapters are replaced.
-
+The agent workflow and browser do not need to change when another implementation is placed behind
+either MCP server.

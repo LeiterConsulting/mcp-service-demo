@@ -8,7 +8,7 @@
       content="A live demonstration of an agent using MCP to investigate Splunk telemetry and enrich a service ticket."
     />
     <title>MCP Service Demo</title>
-    <link rel="stylesheet" href="/static/styles.css?v=0.1.0" />
+    <link rel="stylesheet" href="/static/styles.css?v=0.2.0" />
   </head>
   <body>
     <div class="app-shell">
@@ -45,7 +45,7 @@
           <div class="briefing-wrap">
             <div class="hero-grid">
               <div class="hero-copy">
-                <div class="eyebrow"><span></span> Live protocol · Synthetic data</div>
+                <div class="eyebrow" id="data-source-label"><span></span> Live protocol · Fixture telemetry</div>
                 <h1 id="briefing-title">One agent. Two systems.<br /><em>A shared protocol.</em></h1>
                 <p class="hero-lede">
                   MCP gives an AI agent a consistent way to discover tools, read operational context,
@@ -56,7 +56,7 @@
                   <button class="button secondary" data-view="desk">Open the service desk</button>
                 </div>
                 <div class="hero-proof">
-                  <span><b>9</b> live MCP tools</span>
+                  <span><b id="hero-tool-count">—</b> live MCP tools</span>
                   <span><b>2</b> independent servers</span>
                   <span><b>1</b> visible workflow</span>
                 </div>
@@ -217,6 +217,6 @@
 
       <div class="toast-region" id="toast-region" aria-live="polite"></div>
     </div>
-    <script src="/static/app.js?v=0.1.0" defer></script>
+    <script src="/static/app.js?v=0.2.0" defer></script>
   </body>
 </html>

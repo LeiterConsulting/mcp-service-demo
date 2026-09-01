@@ -5,15 +5,19 @@ import multiprocessing
 import signal
 import socket
 import sys
+import tarfile
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import uvicorn
 
 from .config import get_settings
+from .scenario import seed_splunk_scenario
 from .servers.splunk import run_splunk_server
 from .servers.tickets import run_ticket_server
+from .splunk_backend import create_splunk_backend
 from .storage import DemoStore
 
 
@@ -73,6 +77,7 @@ def run_all() -> None:
         print(f"  Demo:       http://{settings.web_host}:{settings.web_port}")
         print(f"  Splunk MCP: {settings.splunk_mcp_url}")
         print(f"  Ticket MCP: {settings.ticket_mcp_url}")
+        print(f"  Splunk data: {settings.splunk_data_mode}")
         print(f"  Agent mode: {settings.agent_mode}\n")
         while all(process.is_alive() for process in processes):
             time.sleep(0.5)
@@ -91,7 +96,33 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("splunk-mcp", help="start only the Splunk MCP server")
     subparsers.add_parser("ticket-mcp", help="start only the ticket MCP server")
     subparsers.add_parser("reset", help="restore the seeded demo scenario")
+    subparsers.add_parser("test-splunk", help="test the configured Splunk REST connection")
+    subparsers.add_parser("seed-splunk", help="publish a fresh scenario to Splunk through HEC")
+    package_parser = subparsers.add_parser(
+        "package-splunk-app", help="build the companion Splunk app archive"
+    )
+    package_parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("dist/mcp_service_demo-0.2.0.tar.gz"),
+        help="archive path (default: dist/mcp_service_demo-0.2.0.tar.gz)",
+    )
     return parser
+
+
+def package_splunk_app(output: Path) -> Path:
+    source = Path.cwd() / "splunk_app" / "mcp_service_demo"
+    if not (source / "default" / "app.conf").is_file():
+        raise FileNotFoundError(
+            "Run this command from the repository root; splunk_app/mcp_service_demo was not found."
+        )
+    output = output.resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(output, "w:gz") as archive:
+        for path in sorted(source.rglob("*")):
+            if path.is_file() and path.name not in {".DS_Store"}:
+                archive.add(path, arcname=Path(source.name) / path.relative_to(source))
+    return output
 
 
 def main() -> None:
@@ -106,7 +137,35 @@ def main() -> None:
     elif command == "ticket-mcp":
         run_ticket_server()
     elif command == "reset":
-        result = DemoStore(get_settings().database_path).reset()
-        print(f"Reset {result['scenario']} with ticket {result['ticket']}")
+        settings = get_settings()
+        store = DemoStore(settings.database_path)
+        result = (
+            seed_splunk_scenario(settings, store)
+            if settings.splunk_data_mode == "live"
+            else store.reset()
+        )
+        suffix = (
+            f" and published {result['events_published']} events as {result['demo_run_id']}"
+            if result.get("events_published")
+            else ""
+        )
+        print(f"Reset {result['scenario']} with ticket {result['ticket']}{suffix}")
+    elif command == "test-splunk":
+        status = create_splunk_backend(get_settings()).status()
+        print(f"Splunk mode: {status['mode']}")
+        print(f"Ready: {status['ready']}")
+        print(f"Source: {status['source']}")
+        if status.get("active_run_id"):
+            print(f"Active demo run: {status['active_run_id']}")
+    elif command == "seed-splunk":
+        settings = get_settings()
+        result = seed_splunk_scenario(settings, DemoStore(settings.database_path))
+        print(
+            f"Published {result['events_published']} events to {result['index']} "
+            f"as {result['demo_run_id']}"
+        )
+    elif command == "package-splunk-app":
+        output = package_splunk_app(args.output)
+        print(f"Built {output}")
     else:
         sys.exit(f"Unknown command: {command}")

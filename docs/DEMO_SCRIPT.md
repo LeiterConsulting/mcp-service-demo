@@ -12,6 +12,9 @@ Suggested framing:
 
 Point out the live tool count. The catalog is discovered from the two running MCP servers rather than duplicated in the UI.
 
+If using live mode, also point out **Real Splunk endpoint** in the briefing and **Splunk live** in
+the header. Those labels are populated from runtime status rather than presenter copy.
+
 ## 2. Show the investigation agent
 
 Open **Agent** and choose **Find the cause**.
@@ -20,7 +23,8 @@ Call attention to the MCP timeline as the answer is built:
 
 1. `splunk.get_service_health` calculates error rate and p95 latency.
 2. `splunk.search_logs` finds the repeated connection-pool failure.
-3. The answer summarizes tool results; it does not contain a prewritten incident narrative.
+3. The answer summarizes the structured tool results; in live mode, those results come from SPL
+   executed through Splunk's REST API.
 
 Optional follow-up: choose **Show my queue** to demonstrate that the same host discovers tools from another MCP server.
 
@@ -44,7 +48,10 @@ End on the new work note and its evidence references.
 
 Suggested close:
 
-> Today these are synthetic events and a fictional service desk. In a real environment the MCP tools would wrap the customer's existing Splunk searches and ServiceNow operations. The agent experience remains the same; the implementation behind each server changes.
+> The incident content and service-desk brand are fictional, but the operations you saw are real:
+> HEC ingestion, Splunk searches, MCP calls, and a persistent ticket update. In the customer's
+> environment, the same tool contracts can wrap their approved Splunk searches and ServiceNow
+> operations without changing the agent experience.
 
 ## Reset between demonstrations
 
@@ -53,4 +60,3 @@ Use **Reset demo** in the header, or run:
 ```bash
 mcp-service-demo reset
 ```
-

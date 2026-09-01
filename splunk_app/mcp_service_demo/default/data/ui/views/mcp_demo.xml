@@ -1,0 +1,90 @@
+<form version="1.1" theme="light">
+  <label>MCP Service Demo</label>
+  <description>Telemetry published by the deterministic checkout degradation scenario.</description>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label>Time range</label>
+      <default>
+        <earliest>-90m@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <search id="active_run">
+    <query>`mcp_demo_base` earliest=-7d | stats max(_time) as latest by demo_run_id | sort 0 - latest | head 1 | fields demo_run_id</query>
+    <done>
+      <set token="run_id">$result.demo_run_id$</set>
+    </done>
+  </search>
+  <row>
+    <panel>
+      <single>
+        <title>Checkout error rate</title>
+        <search>
+          <query>`mcp_demo_base` demo_run_id="$run_id$" service=checkout-api event_type=request | stats count as requests count(eval(tonumber(status_code)&gt;=500)) as errors | eval error_rate=round(errors*100/requests,1)."%"</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="underLabel">Current demo run</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Checkout p95 latency</title>
+        <search>
+          <query>`mcp_demo_base` demo_run_id="$run_id$" service=checkout-api event_type=request | stats perc95(duration_ms) as p95_ms | eval p95_ms=round(p95_ms)." ms"</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="underLabel">Current demo run</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Failed requests</title>
+        <search>
+          <query>`mcp_demo_base` demo_run_id="$run_id$" service=checkout-api event_type=request status_code&gt;=500 | stats count</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="underLabel">Current demo run</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Checkout health timeline</title>
+        <search>
+          <query>`mcp_demo_base` demo_run_id="$run_id$" service=checkout-api event_type=request | timechart span=5m count as requests count(eval(tonumber(status_code)&gt;=500)) as errors perc95(duration_ms) as p95_ms</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Correlated errors and traces</title>
+        <search>
+          <query>`mcp_demo_base` demo_run_id="$run_id$" level=ERROR | sort 0 - _time | table _time service message status_code duration_ms host trace_id version</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="count">10</option>
+      </table>
+    </panel>
+    <panel>
+      <table>
+        <title>Recent deployment</title>
+        <search>
+          <query>`mcp_demo_base` demo_run_id="$run_id$" event_type=deployment | sort 0 - _time | table _time service message version host</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+</form>

@@ -414,6 +414,19 @@ class DemoStore:
         self.ensure_seeded()
         return list(SERVICES)
 
+    def export_events(self) -> list[dict[str, Any]]:
+        """Return the current synthetic event stream for HEC publication."""
+        self.ensure_seeded()
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT timestamp, service, level, event_type, message, status_code,
+                       duration_ms, host, trace_id, version
+                FROM events ORDER BY timestamp, id
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def get_service_health(self, service: str, minutes: int = 30) -> dict[str, Any]:
         normalized = self._validate_service(service)
         window = min(max(minutes, 5), 90)
