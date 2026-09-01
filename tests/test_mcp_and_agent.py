@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import replace
+from types import SimpleNamespace
+
+import mcp_service_demo.agent as agent_module
 import mcp_service_demo.mcp_client as mcp_client_module
 from mcp_service_demo.agent import DemoAgent
 from mcp_service_demo.config import get_settings
@@ -233,3 +237,71 @@ async def test_remote_mcp_target_applies_bearer_token_and_tls_policy(monkeypatch
     assert captured["http"]["verify"] == "/certs/customer-ca.pem"
     assert captured["http"]["follow_redirects"] is True
     assert captured["client"] == {"raise_exceptions": True}
+
+
+async def test_llm_mode_uses_saved_endpoint_model_and_responses_api(tmp_path, monkeypatch):
+    monkeypatch.setenv("DEMO_DATABASE_PATH", str(tmp_path / "demo.db"))
+    base = get_settings()
+    settings = replace(
+        base,
+        agent_mode_preference="openai",
+        openai_base_url="https://llm.example/v1",
+        openai_api_key="demo-key",
+        openai_model="demo-model",
+    )
+    captured = {}
+
+    class FakeResponses:
+        async def create(self, **kwargs):
+            captured["request"] = kwargs
+            return SimpleNamespace(output=[], output_text="LLM response", id="resp-demo")
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            captured["client"] = kwargs
+            self.responses = FakeResponses()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+    class EmptyBroker:
+        async def list_tools(self):
+            return []
+
+    monkeypatch.setattr(agent_module, "AsyncOpenAI", FakeOpenAI)
+    result = await DemoAgent(settings, EmptyBroker()).chat("Summarize the incident")
+
+    assert result.mode == "openai"
+    assert result.message == "LLM response"
+    assert captured["client"] == {
+        "api_key": "demo-key",
+        "base_url": "https://llm.example/v1",
+    }
+    assert captured["request"]["model"] == "demo-model"
+    assert captured["request"]["input"] == "Summarize the incident"
+
+
+async def test_guided_mode_does_not_use_a_stored_llm_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("DEMO_DATABASE_PATH", str(tmp_path / "demo.db"))
+    settings = replace(
+        get_settings(),
+        agent_mode_preference="guided",
+        openai_api_key="configured-but-disabled",
+    )
+    agent = DemoAgent(settings, object())
+
+    async def guided(message, ticket_id):
+        return SimpleNamespace(message=message, mode="guided", ticket_id=ticket_id)
+
+    async def unexpected_llm(*_args):
+        raise AssertionError("LLM should not be called in Guided mode")
+
+    monkeypatch.setattr(agent, "_guided_chat", guided)
+    monkeypatch.setattr(agent, "_openai_chat", unexpected_llm)
+
+    result = await agent.chat("Stay deterministic", "INC-1042")
+
+    assert result.mode == "guided"

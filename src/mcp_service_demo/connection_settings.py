@@ -14,6 +14,9 @@ from .config import Settings
 
 MASK = "***"
 _EDITABLE_FIELDS = {
+    "agent_mode",
+    "openai_base_url",
+    "openai_model",
     "mcp_url",
     "mcp_verify_ssl",
     "mcp_ca_bundle_path",
@@ -26,11 +29,11 @@ _EDITABLE_FIELDS = {
     "hec_verify_ssl",
     "hec_ca_bundle_path",
 }
-_SECRET_FIELDS = {"mcp_token", "rest_token", "hec_token"}
+_SECRET_FIELDS = {"mcp_token", "rest_token", "hec_token", "openai_api_key"}
 
 
 class SplunkConnectionStore:
-    """Encrypted, process-shared overrides for the demo's active Splunk connection."""
+    """Encrypted, process-shared overrides for the demo's external connections."""
 
     def __init__(
         self,
@@ -115,6 +118,12 @@ class SplunkConnectionStore:
             saved.get("hec_verify_ssl", base.splunk_hec_verify is not False),
             saved.get("hec_ca_bundle_path"),
         )
+        agent_mode = _agent_mode(saved.get("agent_mode", base.agent_mode_preference))
+        openai_base_url = _url(
+            saved.get("openai_base_url", base.openai_base_url),
+            "LLM API endpoint",
+        )
+        openai_model = _model(saved.get("openai_model", base.openai_model))
 
         return replace(
             base,
@@ -129,6 +138,10 @@ class SplunkConnectionStore:
             splunk_hec_url=hec_url.rstrip("/") if hec_url else None,
             splunk_hec_token=_secret(saved, "hec_token", base.splunk_hec_token),
             splunk_hec_verify=hec_verify,
+            agent_mode_preference=agent_mode,
+            openai_base_url=openai_base_url.rstrip("/"),
+            openai_api_key=_secret(saved, "openai_api_key", base.openai_api_key),
+            openai_model=openai_model,
         )
 
     def preview(self, base: Settings, update: Mapping[str, Any]) -> Settings:
@@ -185,6 +198,21 @@ class SplunkConnectionStore:
             },
         }
 
+    def safe_export_llm(self, base: Settings) -> dict[str, Any]:
+        saved = self.load()
+        effective = self.apply(base, saved)
+        llm_fields = {"agent_mode", "openai_base_url", "openai_api_key", "openai_model"}
+        return {
+            "source": "saved profile" if llm_fields.intersection(saved) else "environment defaults",
+            "agent_mode": effective.agent_mode_preference,
+            "active_mode": effective.agent_mode,
+            "base_url": effective.openai_base_url,
+            "api_key": MASK if effective.openai_api_key else "",
+            "api_key_configured": effective.llm_configured,
+            "model": effective.openai_model,
+            "provider": "OpenAI-compatible Responses API",
+        }
+
     def _merged_payload(self, update: Mapping[str, Any]) -> dict[str, Any]:
         current = self.load()
         for field in _EDITABLE_FIELDS:
@@ -200,7 +228,9 @@ class SplunkConnectionStore:
             current.pop("hec_token", None)
         if update.get("clear_mcp_token"):
             current.pop("mcp_token", None)
-        current["version"] = 1
+        if update.get("clear_openai_api_key"):
+            current.pop("openai_api_key", None)
+        current["version"] = 2
         return current
 
     def _write(self, payload: Mapping[str, Any]) -> None:
@@ -266,6 +296,22 @@ def _data_mode(value: Any) -> str:
     normalized = str(value or "fixture").strip().lower()
     if normalized not in {"fixture", "live"}:
         raise ValueError("Data source must be 'fixture' or 'live'")
+    return normalized
+
+
+def _agent_mode(value: Any) -> str:
+    normalized = str(value or "guided").strip().lower()
+    if normalized not in {"guided", "openai"}:
+        raise ValueError("Agent mode must be 'guided' or 'openai'")
+    return normalized
+
+
+def _model(value: Any) -> str:
+    normalized = str(value or "").strip()
+    if not normalized:
+        raise ValueError("LLM model is required")
+    if len(normalized) > 120:
+        raise ValueError("LLM model must be 120 characters or fewer")
     return normalized
 
 

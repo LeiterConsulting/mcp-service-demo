@@ -3,6 +3,7 @@ const state = {
   health: null,
   splunkStatus: null,
   splunkSettings: null,
+  llmSettings: null,
   tools: [],
   tickets: [],
   activeTicket: null,
@@ -95,6 +96,20 @@ function renderConnectionStatus() {
   $("#data-source-label").innerHTML = live
     ? "<span></span> Live protocol · Real Splunk endpoint"
     : "<span></span> Live protocol · Fixture telemetry";
+}
+
+function renderAgentMode() {
+  const llmActive = state.health?.agent_mode === "openai";
+  const model = state.health?.agent_model || "LLM";
+  const badge = $("#agent-mode");
+  if (badge) badge.textContent = llmActive ? `${model} + MCP` : "Guided MCP";
+  const setupButton = $("#llm-settings-button");
+  if (setupButton) {
+    setupButton.classList.toggle("configured", Boolean(state.health?.llm_configured));
+    setupButton.title = llmActive
+      ? `LLM-assisted mode is active with ${model}`
+      : "Configure guided or LLM-assisted agent mode";
+  }
 }
 
 function renderSplunkSettings(settings) {
@@ -240,10 +255,111 @@ async function saveSplunkConnection(event) {
       error: error.message,
     }));
     renderConnectionStatus();
+    renderAgentMode();
     $("#splunk-settings-dialog").close();
     toast("Splunk connection saved");
   } catch (error) {
     showConnectionResult(`Connection could not be saved: ${error.message}`, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+function renderLLMSettings(settings) {
+  state.llmSettings = settings;
+  const mode = settings.agent_mode || "guided";
+  const modeInput = $(`input[name="agent-mode"][value="${mode}"]`);
+  if (modeInput) modeInput.checked = true;
+  $("#llm-settings-source").textContent = settings.source || "Environment defaults";
+  $("#llm-base-url").value = settings.base_url || "https://api.openai.com/v1";
+  $("#llm-model").value = settings.model || "gpt-5-mini";
+  $("#llm-api-key").value = "";
+  $("#llm-api-key").placeholder = settings.api_key_configured
+    ? "Configured — leave blank to keep"
+    : "Enter an API key";
+  $("#llm-api-key-hint").textContent = settings.api_key_configured
+    ? "An API key is configured. Enter a value only to replace it."
+    : "Required only when LLM-assisted mode is enabled.";
+  $("#clear-llm-key-row").hidden = !settings.api_key_configured;
+  $("#clear-llm-api-key").checked = false;
+  $("#llm-active-status").textContent =
+    settings.active_mode === "openai" ? `Active · ${settings.model}` : "Active · Guided";
+}
+
+function llmSettingsPayload() {
+  const clearApiKey = $("#clear-llm-api-key").checked;
+  return {
+    agent_mode: clearApiKey
+      ? "guided"
+      : $('input[name="agent-mode"]:checked')?.value || "guided",
+    base_url: $("#llm-base-url").value.trim(),
+    api_key: $("#llm-api-key").value.trim(),
+    model: $("#llm-model").value.trim(),
+    clear_api_key: clearApiKey,
+  };
+}
+
+function showLLMResult(message, isError = false) {
+  const result = $("#llm-connection-result");
+  result.hidden = false;
+  result.classList.toggle("error", isError);
+  result.textContent = message;
+}
+
+async function openLLMSettings() {
+  const dialog = $("#llm-settings-dialog");
+  $("#llm-connection-result").hidden = true;
+  dialog.showModal();
+  try {
+    renderLLMSettings(await api("/api/settings/llm"));
+  } catch (error) {
+    showLLMResult(`Settings could not be loaded: ${error.message}`, true);
+  }
+}
+
+async function testLLMConnection() {
+  const button = $("#test-llm-button");
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Testing…";
+  $("#llm-connection-result").hidden = true;
+  try {
+    const result = await api("/api/settings/llm/test", {
+      method: "POST",
+      body: JSON.stringify(llmSettingsPayload()),
+    });
+    showLLMResult(result.message, result.status !== "success");
+  } catch (error) {
+    showLLMResult(`Model connection test failed: ${error.message}`, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+async function saveLLMConnection(event) {
+  event.preventDefault();
+  const button = $("#save-llm-button");
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Saving…";
+  try {
+    const result = await api("/api/settings/llm", {
+      method: "PUT",
+      body: JSON.stringify(llmSettingsPayload()),
+    });
+    renderLLMSettings(result.settings);
+    state.health = await api("/api/health");
+    renderAgentMode();
+    $("#llm-settings-dialog").close();
+    toast(
+      state.health.agent_mode === "openai"
+        ? `LLM-assisted mode enabled · ${state.health.agent_model}`
+        : "Guided agent mode enabled",
+    );
+  } catch (error) {
+    showLLMResult(`Agent settings could not be saved: ${error.message}`, true);
   } finally {
     button.disabled = false;
     button.textContent = originalText;
@@ -481,7 +597,7 @@ async function resetDemo() {
     await refreshTickets("INC-1042");
     renderChat();
     renderConnectionStatus();
-    toast("Demo scenario restored · Splunk Setup preserved");
+    toast("Demo scenario restored · Splunk and LLM setup preserved");
   } catch (error) {
     toast(error.message, true);
   } finally {
@@ -507,6 +623,13 @@ function bindEvents() {
   $("#test-mcp-button").addEventListener("click", testMcpConnection);
   $("#test-splunk-button").addEventListener("click", testSplunkConnection);
   $("#splunk-settings-form").addEventListener("submit", saveSplunkConnection);
+  $("#llm-settings-button").addEventListener("click", openLLMSettings);
+  $("#llm-settings-close").addEventListener("click", () => $("#llm-settings-dialog").close());
+  $("#llm-settings-dialog").addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) event.currentTarget.close();
+  });
+  $("#test-llm-button").addEventListener("click", testLLMConnection);
+  $("#llm-settings-form").addEventListener("submit", saveLLMConnection);
   $("#reset-button").addEventListener("click", resetDemo);
   $("#chat-form").addEventListener("submit", (event) => {
     event.preventDefault();
@@ -544,7 +667,7 @@ async function bootstrap() {
     state.tools = toolPayload.tools;
     state.tickets = ticketPayload.tickets;
     renderConnectionStatus();
-    $("#agent-mode").textContent = health.agent_mode === "openai" ? "OpenAI + MCP" : "Guided MCP";
+    renderAgentMode();
     renderToolCatalog();
     renderTicketList();
     renderChat();

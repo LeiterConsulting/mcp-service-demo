@@ -6,7 +6,9 @@ services:
       - "8101:8101"
       - "8102:8102"
     environment:
+      AGENT_MODE: ${AGENT_MODE:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5-mini}
       SPLUNK_MCP_URL: http://127.0.0.1:8101/mcp
       TICKET_MCP_URL: http://127.0.0.1:8102/mcp

@@ -124,6 +124,16 @@ class DemoAgent:
 
         return call
 
+    async def investigate(self, ticket_id: str, write_back: bool = True) -> AgentResult:
+        """Run the ticket action through the selected agent mode."""
+        if self.settings.agent_mode == "openai":
+            write_instruction = " and update the ticket" if write_back else " without updating it"
+            return await self.chat(
+                f"Investigate {ticket_id} with Splunk{write_instruction}",
+                ticket_id,
+            )
+        return await self.investigate_ticket(ticket_id, write_back=write_back)
+
     async def investigate_ticket(self, ticket_id: str, write_back: bool = True) -> AgentResult:
         timeline: list[ToolEvent] = []
         ticket = await self._call(
@@ -269,7 +279,7 @@ class DemoAgent:
         return "\n".join(lines)
 
     async def chat(self, message: str, ticket_id: str | None = None) -> AgentResult:
-        if self.settings.openai_api_key:
+        if self.settings.agent_mode == "openai":
             try:
                 return await self._openai_chat(message, ticket_id)
             except Exception:
@@ -375,7 +385,10 @@ class DemoAgent:
         previous_response_id: str | None = None
         ticket_updated = False
 
-        async with AsyncOpenAI(api_key=self.settings.openai_api_key) as client:
+        async with AsyncOpenAI(
+            api_key=self.settings.openai_api_key,
+            base_url=self.settings.openai_base_url,
+        ) as client:
             for _ in range(5):
                 response = await client.responses.create(
                     model=self.settings.openai_model,

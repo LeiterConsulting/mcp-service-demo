@@ -125,6 +125,7 @@ button { color: inherit; }
 .status-dot, .activity-status i { width: 7px; height: 7px; border-radius: 50%; background: #a5aca8; }
 .connection-pill.online .status-dot, .activity-status i { background: #21aa76; box-shadow: 0 0 0 4px rgba(33, 170, 118, 0.12); }
 .connection-pill.offline .status-dot { background: var(--red); }
+#llm-settings-button.configured { border-color: #cbb6e5; color: #593386; background: #f7f1fc; }
 
 .button {
   display: inline-flex;
@@ -474,9 +475,11 @@ button { color: inherit; }
   box-shadow: 0 28px 90px rgba(15, 35, 28, 0.25);
 }
 .settings-dialog::backdrop { background: rgba(14, 29, 24, 0.52); backdrop-filter: blur(5px); }
+.llm-dialog { width: min(760px, calc(100vw - 32px)); }
 .settings-shell { max-height: calc(100vh - 32px); display: flex; flex-direction: column; background: #f7f8f4; }
 .settings-header { position: relative; display: grid; grid-template-columns: auto 1fr auto; gap: 16px; align-items: center; padding: 24px 28px; border-bottom: 1px solid var(--line); background: white; }
 .settings-mark { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 13px; color: #11251d; background: #8cf39a; font-size: 19px; font-weight: 900; box-shadow: 0 8px 22px rgba(52, 181, 89, 0.2); }
+.settings-mark.llm-mark { color: #4b2874; background: #e7d4f7; box-shadow: 0 8px 22px rgba(105, 63, 160, 0.18); }
 .settings-header h2 { margin: 4px 0 3px; font-family: Georgia, serif; font-size: 27px; font-weight: 500; }
 .settings-header p { margin: 0; color: var(--muted); font-size: 11px; }
 .settings-close { width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: #fafbf9; font-size: 21px; line-height: 1; cursor: pointer; }
@@ -485,6 +488,7 @@ button { color: inherit; }
 .settings-section { padding: 20px; border: 1px solid var(--line); border-radius: 15px; background: white; }
 .source-section { margin-bottom: 14px; }
 .mcp-section { margin-bottom: 14px; }
+.llm-model-section { margin-bottom: 14px; }
 .settings-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .settings-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .settings-section-heading h3 { margin: 4px 0 0; font-family: Georgia, serif; font-size: 19px; font-weight: 500; }
@@ -516,6 +520,7 @@ button { color: inherit; }
 .mcp-test { min-height: 39px; white-space: nowrap; }
 .field-hint { display: block; margin-top: 5px; color: #8b9690; font-size: 8px; }
 .check-row { display: flex; gap: 9px; align-items: flex-start; margin-top: 15px; padding: 11px; border: 1px solid #e1e6e1; border-radius: 9px; background: #fafbf9; cursor: pointer; }
+.check-row[hidden] { display: none; }
 .check-row input { width: 15px; height: 15px; margin: 1px 0 0; accent-color: var(--green); }
 .check-row b, .check-row small { display: block; }
 .check-row b { font-size: 9px; }
@@ -550,7 +555,7 @@ button { color: inherit; }
   .topbar { height: auto; min-height: 66px; grid-template-columns: 1fr auto; gap: 8px; padding-block: 10px; }
   .primary-nav { grid-column: 1 / -1; grid-row: 2; width: 100%; justify-content: center; }
   .topbar-actions .button { display: none; }
-  .topbar-actions #settings-button { display: inline-flex; }
+  .topbar-actions #settings-button, .topbar-actions #llm-settings-button { display: inline-flex; }
   .view { min-height: calc(100vh - 110px); }
   .briefing-wrap { padding: 38px 20px; }
   .hero-grid { gap: 35px; }

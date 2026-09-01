@@ -56,21 +56,26 @@ class Settings:
     splunk_hec_token: str | None
     splunk_hec_verify: bool | str
     splunk_hec_batch_size: int
+    agent_mode_preference: str
+    openai_base_url: str
     openai_api_key: str | None
     openai_model: str
 
     @property
     def agent_mode(self) -> str:
-        return "openai" if self.openai_api_key else "guided"
+        return (
+            "openai" if self.agent_mode_preference == "openai" and self.openai_api_key else "guided"
+        )
+
+    @property
+    def llm_configured(self) -> bool:
+        return bool(self.openai_api_key)
 
     @property
     def splunk_rest_configured(self) -> bool:
         return bool(
             self.splunk_rest_url
-            and (
-                self.splunk_rest_token
-                or (self.splunk_username and self.splunk_password)
-            )
+            and (self.splunk_rest_token or (self.splunk_username and self.splunk_password))
         )
 
     @property
@@ -87,6 +92,11 @@ def get_environment_settings() -> Settings:
     token_scheme = os.getenv("SPLUNK_REST_TOKEN_SCHEME", "Bearer").strip().title()
     if token_scheme not in {"Bearer", "Splunk"}:
         raise ValueError("SPLUNK_REST_TOKEN_SCHEME must be 'Bearer' or 'Splunk'")
+    openai_api_key = os.getenv("OPENAI_API_KEY") or None
+    configured_agent_mode = os.getenv("AGENT_MODE", "").strip().lower()
+    agent_mode = configured_agent_mode or ("openai" if openai_api_key else "guided")
+    if agent_mode not in {"guided", "openai"}:
+        raise ValueError("AGENT_MODE must be 'guided' or 'openai'")
 
     return Settings(
         database_path=Path(os.getenv("DEMO_DATABASE_PATH", _default_database_path())),
@@ -107,22 +117,20 @@ def get_environment_settings() -> Settings:
         splunk_username=os.getenv("SPLUNK_USERNAME") or None,
         splunk_password=os.getenv("SPLUNK_PASSWORD") or None,
         splunk_rest_verify=_tls_verify("SPLUNK_REST"),
-        splunk_search_timeout_seconds=float(
-            os.getenv("SPLUNK_SEARCH_TIMEOUT_SECONDS", "60")
-        ),
+        splunk_search_timeout_seconds=float(os.getenv("SPLUNK_SEARCH_TIMEOUT_SECONDS", "60")),
         splunk_index_wait_seconds=float(os.getenv("SPLUNK_INDEX_WAIT_SECONDS", "30")),
         splunk_app=os.getenv("SPLUNK_APP", "mcp_service_demo"),
         splunk_owner=os.getenv("SPLUNK_OWNER", "nobody"),
         splunk_index=os.getenv("SPLUNK_INDEX", "mcp_demo"),
         splunk_sourcetype=os.getenv("SPLUNK_SOURCETYPE", "mcp:demo:event"),
-        splunk_scenario_id=os.getenv(
-            "SPLUNK_SCENARIO_ID", "checkout-degradation-v1"
-        ),
+        splunk_scenario_id=os.getenv("SPLUNK_SCENARIO_ID", "checkout-degradation-v1"),
         splunk_hec_url=(os.getenv("SPLUNK_HEC_URL") or "").rstrip("/") or None,
         splunk_hec_token=os.getenv("SPLUNK_HEC_TOKEN") or None,
         splunk_hec_verify=_tls_verify("SPLUNK_HEC"),
         splunk_hec_batch_size=max(1, int(os.getenv("SPLUNK_HEC_BATCH_SIZE", "200"))),
-        openai_api_key=os.getenv("OPENAI_API_KEY") or None,
+        agent_mode_preference=agent_mode,
+        openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/"),
+        openai_api_key=openai_api_key,
         openai_model=os.getenv("OPENAI_MODEL", "gpt-5-mini"),
     )
 

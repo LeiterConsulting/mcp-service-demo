@@ -8,7 +8,7 @@
       content="A live demonstration of an agent using MCP to investigate Splunk telemetry and enrich a service ticket."
     />
     <title>MCP Service Demo</title>
-    <link rel="stylesheet" href="/static/styles.css?v=0.3.1" />
+    <link rel="stylesheet" href="/static/styles.css?v=0.4.0" />
   </head>
   <body>
     <div class="app-shell">
@@ -34,10 +34,13 @@
             <span class="status-dot"></span>
             <span>Connecting</span>
           </span>
+          <button class="button ghost small" id="llm-settings-button" title="Configure guided or LLM-assisted agent mode">
+            <span aria-hidden="true">✦</span> LLM setup
+          </button>
           <button class="button ghost small" id="settings-button" title="Configure the Splunk connection">
             <span aria-hidden="true">⚙</span> Splunk setup
           </button>
-          <button class="button ghost small" id="reset-button" title="Restore scenario and ticket data; Splunk Setup is preserved">
+          <button class="button ghost small" id="reset-button" title="Restore scenario and ticket data; Splunk and LLM setup are preserved">
             Reset demo
           </button>
         </div>
@@ -376,8 +379,102 @@
         </form>
       </dialog>
 
+      <dialog class="settings-dialog llm-dialog" id="llm-settings-dialog" aria-labelledby="llm-settings-title">
+        <form class="settings-shell" id="llm-settings-form">
+          <header class="settings-header">
+            <div class="settings-mark llm-mark" aria-hidden="true">✦</div>
+            <div>
+              <span class="workspace-kicker">Agent runtime</span>
+              <h2 id="llm-settings-title">Agent &amp; LLM setup</h2>
+              <p>Choose a presentation-safe guided flow or let a model select the same MCP tools.</p>
+            </div>
+            <button type="button" class="settings-close" id="llm-settings-close" aria-label="Close LLM settings">×</button>
+          </header>
+
+          <div class="settings-body">
+            <section class="settings-section source-section">
+              <div class="settings-section-heading">
+                <div>
+                  <span class="settings-step">01 · Agent mode</span>
+                  <h3>How should the agent reason?</h3>
+                </div>
+                <span class="settings-source" id="llm-settings-source">Environment defaults</span>
+              </div>
+              <div class="source-options" role="radiogroup" aria-label="Agent mode">
+                <label class="source-option">
+                  <input type="radio" name="agent-mode" value="guided" />
+                  <span class="source-option-dot"></span>
+                  <span><b>Guided demo</b><small>Predictable routing and repeatable presentation output.</small></span>
+                </label>
+                <label class="source-option">
+                  <input type="radio" name="agent-mode" value="openai" />
+                  <span class="source-option-dot"></span>
+                  <span><b>LLM-assisted</b><small>The model interprets intent and selects discovered MCP tools.</small></span>
+                </label>
+              </div>
+            </section>
+
+            <section class="settings-section llm-model-section">
+              <div class="settings-section-heading">
+                <div>
+                  <span class="settings-step">02 · Model connection</span>
+                  <h3>Responses API</h3>
+                </div>
+                <span class="settings-role mcp" id="llm-active-status">Active · Guided</span>
+              </div>
+              <p class="settings-help mcp-help">
+                The model handles intent and tool selection. Splunk and the service desk remain the authoritative evidence and action systems behind MCP.
+              </p>
+
+              <div class="mcp-fields llm-fields">
+                <div>
+                  <label class="field-label" for="llm-base-url">API endpoint</label>
+                  <input class="settings-input" id="llm-base-url" type="url" placeholder="https://api.openai.com/v1" required />
+                </div>
+                <div>
+                  <label class="field-label" for="llm-model">Model</label>
+                  <input class="settings-input" id="llm-model" type="text" placeholder="gpt-5-mini" maxlength="120" required />
+                </div>
+              </div>
+
+              <label class="field-label" for="llm-api-key">API key</label>
+              <input class="settings-input" id="llm-api-key" type="password" autocomplete="new-password" />
+              <small class="field-hint" id="llm-api-key-hint">Required only when LLM-assisted mode is enabled.</small>
+
+              <label class="check-row" id="clear-llm-key-row" for="clear-llm-api-key" hidden>
+                <input id="clear-llm-api-key" type="checkbox" />
+                <span><b>Remove the saved API key</b><small>The agent will return to Guided mode after the key is removed.</small></span>
+              </label>
+            </section>
+
+            <section class="contract-strip llm-contract">
+              <div>
+                <span class="settings-step">Demo contract</span>
+                <p>Changing modes changes who chooses tools, not what those tools are allowed to do.</p>
+              </div>
+              <div class="contract-values">
+                <span>MCP discovery</span>
+                <span>read-before-claim</span>
+                <span>explicit write intent</span>
+                <span>guided fallback</span>
+              </div>
+            </section>
+
+            <div class="connection-result" id="llm-connection-result" role="status" aria-live="polite" hidden></div>
+          </div>
+
+          <footer class="settings-footer">
+            <p>API keys are encrypted locally and are never returned by the API.</p>
+            <div>
+              <button class="button secondary" type="button" id="test-llm-button">Test model</button>
+              <button class="button primary" type="submit" id="save-llm-button">Save agent mode</button>
+            </div>
+          </footer>
+        </form>
+      </dialog>
+
       <div class="toast-region" id="toast-region" aria-live="polite"></div>
     </div>
-    <script src="/static/app.js?v=0.3.3" defer></script>
+    <script src="/static/app.js?v=0.4.0" defer></script>
   </body>
 </html>

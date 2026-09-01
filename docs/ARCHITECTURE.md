@@ -8,6 +8,7 @@ Browser
    │ REST
    ▼
 Agent host :8100
+   ├── Guided router or Responses-compatible LLM
    ├── Streamable HTTP MCP ──► Splunk Operations :8101
    │                              ├── fixture ──► local event rows
    │                              └── live ─────► Splunk REST search API
@@ -40,10 +41,16 @@ rehearsals.
 
 ## Runtime connection settings
 
-Environment variables establish the default Splunk profile. The **Splunk setup** panel can save an
+Environment variables establish the default connection profile. The **Splunk setup** panel can save an
 encrypted override containing the agent's Splunk MCP endpoint and bearer token, the data mode,
 management API connection, HEC connection, TLS verification, and optional CA bundle paths. Tokens
 are masked in API responses, and blank secret fields preserve the existing value.
+
+The separate **LLM setup** panel selects Guided or LLM-assisted mode and stores a
+Responses-compatible endpoint, model, and encrypted API key. In LLM-assisted mode the model
+interprets intent and selects tools; MCP servers still own the evidence and action boundaries.
+Both chat and **Ask Splunk** resolve this choice at request time, so switching modes does not require
+a restart. A failed model call falls back to the guided workflow for demo continuity.
 
 The agent resolves the MCP transport profile whenever it discovers or invokes a tool. The web host
 and local Splunk MCP server also resolve their effective platform profile from the same encrypted

@@ -12,6 +12,10 @@ from mcp_service_demo.storage import DemoStore
 
 def base_settings(monkeypatch, tmp_path):
     monkeypatch.setenv("DEMO_DATABASE_PATH", str(tmp_path / "demo.db"))
+    monkeypatch.setenv("AGENT_MODE", "guided")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-5-mini")
     monkeypatch.setenv("SPLUNK_DATA_MODE", "fixture")
     monkeypatch.setenv("SPLUNK_MCP_URL", "https://environment-mcp.example/mcp")
     monkeypatch.setenv("SPLUNK_MCP_TOKEN", "environment-mcp-token")
@@ -121,6 +125,7 @@ def test_demo_reset_preserves_saved_splunk_profile(monkeypatch, tmp_path):
             "data_mode": "live",
             "mcp_token": "saved-mcp-secret",
             "hec_token": "saved-hec-secret",
+            "openai_api_key": "saved-llm-secret",
         },
     )
     encrypted_before = connection_store.config_path.read_bytes()
@@ -132,6 +137,7 @@ def test_demo_reset_preserves_saved_splunk_profile(monkeypatch, tmp_path):
     assert connection_store.key_path.read_bytes() == key_before
     assert connection_store.apply(base).splunk_mcp_token == "saved-mcp-secret"
     assert connection_store.apply(base).splunk_hec_token == "saved-hec-secret"
+    assert connection_store.apply(base).openai_api_key == "saved-llm-secret"
 
 
 def test_legacy_profile_migrates_to_dedicated_settings_directory(monkeypatch, tmp_path):
@@ -160,3 +166,47 @@ def test_legacy_profile_migrates_to_dedicated_settings_directory(monkeypatch, tm
     assert migrated_store.key_path.is_file()
     assert legacy_store.config_path.is_file()
     assert legacy_store.key_path.is_file()
+
+
+def test_saved_llm_connection_is_encrypted_masked_and_applied(monkeypatch, tmp_path):
+    base = base_settings(monkeypatch, tmp_path)
+    connection_store = SplunkConnectionStore.for_settings(base)
+
+    effective = connection_store.save(
+        base,
+        {
+            "agent_mode": "openai",
+            "openai_base_url": "https://llm.example/v1/",
+            "openai_api_key": "saved-llm-secret",
+            "openai_model": "demo-model",
+        },
+    )
+    exported = connection_store.safe_export_llm(base)
+
+    assert effective.agent_mode == "openai"
+    assert effective.openai_base_url == "https://llm.example/v1"
+    assert effective.openai_api_key == "saved-llm-secret"
+    assert effective.openai_model == "demo-model"
+    assert exported["api_key"] == MASK
+    assert exported["api_key_configured"] is True
+    assert exported["active_mode"] == "openai"
+    assert b"saved-llm-secret" not in connection_store.config_path.read_bytes()
+
+
+def test_blank_llm_api_key_preserves_existing_value(monkeypatch, tmp_path):
+    base = base_settings(monkeypatch, tmp_path)
+    connection_store = SplunkConnectionStore.for_settings(base)
+    connection_store.save(base, {"openai_api_key": "first-key"})
+
+    effective = connection_store.save(
+        base,
+        {
+            "agent_mode": "guided",
+            "openai_api_key": "",
+            "openai_model": "next-model",
+        },
+    )
+
+    assert effective.openai_api_key == "first-key"
+    assert effective.openai_model == "next-model"
+    assert effective.agent_mode == "guided"

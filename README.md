@@ -30,7 +30,10 @@ mcp-service-demo run
 
 Open [http://127.0.0.1:8100](http://127.0.0.1:8100).
 
-An OpenAI API key is optional. Without one, the app uses a deterministic guided agent that still discovers and invokes the live MCP tools. With `OPENAI_API_KEY` configured, free-form chat uses an OpenAI model to select and sequence the same tools.
+An LLM is optional. Open **LLM setup** to switch between the deterministic Guided agent and an
+LLM-assisted agent that selects and sequences the same discovered MCP tools. The setup supports an
+OpenAI or Responses-compatible endpoint, model, encrypted API key, and connection test. Guided
+mode remains the presentation-safe fallback if the model endpoint is unavailable.
 
 The default `SPLUNK_DATA_MODE=fixture` is the zero-dependency path. To use a real endpoint,
 install the companion Splunk app, open **Splunk setup** in the demo header, enter the MCP and HEC
@@ -41,8 +44,8 @@ supplied through environment variables. See [`docs/SPLUNK_SETUP.md`](docs/SPLUNK
 The settings experience mirrors the larger discovery tool's useful connection pattern—MCP
 endpoint, masked bearer token, TLS verification, optional CA bundle, and a connection test—using
 this demo's language and visual design. The panel separately configures optional direct REST access
-and the HEC publisher. Saved overrides are encrypted in the persistent
-`data` directory and take effect without a restart.
+and the HEC publisher. Splunk and LLM overrides are encrypted in the persistent
+`demo-settings` volume and take effect without a restart.
 
 ### Docker alternative
 
@@ -50,7 +53,8 @@ and the HEC publisher. Saved overrides are encrypted in the persistent
 docker compose up --build
 ```
 
-Then open [http://127.0.0.1:8100](http://127.0.0.1:8100). The scenario database is kept in a named volume.
+Then open [http://127.0.0.1:8100](http://127.0.0.1:8100). Scenario data and encrypted connection
+settings are kept in separate named volumes.
 
 ## Demo services
 
@@ -81,8 +85,8 @@ mcp-service-demo web          # run only the browser/API host
 pytest                        # run the test suite
 ```
 
-CLI commands resolve the same active Splunk profile saved through the browser, with environment
-variables serving as defaults.
+CLI commands resolve the same active profile saved through the browser, with environment variables
+serving as defaults.
 
 ## Demo boundaries
 

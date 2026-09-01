@@ -10,6 +10,10 @@ mode, confirm the search test identifies the Splunk server and reports an active
 panel keeps tokens masked, so it is safe to show the connection shape without displaying
 credentials.
 
+Open **LLM setup** and choose the mode for this presentation. **Guided demo** produces the same
+tool sequence every time. **LLM-assisted** lets the configured model interpret the request and
+select from the tools discovered over MCP. Use **Test model** before enabling LLM-assisted mode.
+
 ## 1. Explain MCP in one minute
 
 Open **MCP in 60 seconds**.
@@ -70,4 +74,4 @@ mcp-service-demo reset
 ```
 
 Reset restores the ticket queue and publishes a fresh scenario. It does not change **Splunk setup**
-or remove saved MCP, HEC, REST, or TLS settings.
+or **LLM setup**, or remove saved MCP, HEC, REST, model, API-key, or TLS settings.
