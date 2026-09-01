@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 import uuid
@@ -10,7 +11,9 @@ from typing import Any
 import httpx
 
 from .config import Settings
+from .mcp_client import MCPBroker
 from .splunk_backend import LiveSplunkBackend, SplunkConnectionError, SplunkRestClient
+from .splunk_mcp_adapter import SplunkMCPAdapter
 from .storage import DemoStore
 
 
@@ -142,3 +145,25 @@ def seed_splunk_scenario(
         "index": settings.splunk_index,
         "sourcetype": settings.splunk_sourcetype,
     }
+
+
+async def seed_splunk_scenario_via_mcp(
+    settings: Settings,
+    broker: MCPBroker,
+    store: DemoStore | None = None,
+) -> dict[str, Any]:
+    """Publish through HEC, then confirm indexing through the configured MCP search tool."""
+    published = await asyncio.to_thread(
+        seed_splunk_scenario,
+        settings,
+        store,
+        wait_for_index=False,
+    )
+    indexed = await SplunkMCPAdapter(settings, broker).wait_for_run(published["demo_run_id"])
+    if not indexed:
+        raise SplunkConnectionError(
+            f"Published {published['events_published']} events, but run "
+            f"{published['demo_run_id']} was not searchable through MCP within "
+            f"{settings.splunk_index_wait_seconds:g} seconds."
+        )
+    return {**published, "indexed": True}

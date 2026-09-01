@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import multiprocessing
 import signal
 import socket
@@ -13,11 +14,13 @@ from typing import Any
 
 import uvicorn
 
-from .config import get_settings
-from .scenario import seed_splunk_scenario
+from .config import Settings, get_settings
+from .mcp_client import MCPBroker, MCPRemoteTarget
+from .scenario import seed_splunk_scenario, seed_splunk_scenario_via_mcp
 from .servers.splunk import run_splunk_server
 from .servers.tickets import run_ticket_server
 from .splunk_backend import create_splunk_backend
+from .splunk_mcp_adapter import SplunkMCPAdapter
 from .storage import DemoStore
 
 
@@ -125,6 +128,32 @@ def package_splunk_app(output: Path) -> Path:
     return output
 
 
+def _remote_splunk_broker(settings: Settings) -> MCPBroker:
+    return MCPBroker(
+        {
+            "splunk": MCPRemoteTarget(
+                url=settings.splunk_mcp_url,
+                token=settings.splunk_mcp_token,
+                verify=settings.splunk_mcp_verify,
+            )
+        }
+    )
+
+
+def _live_seed(settings: Settings, store: DemoStore) -> dict[str, Any]:
+    if settings.splunk_rest_configured:
+        return seed_splunk_scenario(settings, store)
+    return asyncio.run(
+        seed_splunk_scenario_via_mcp(settings, _remote_splunk_broker(settings), store)
+    )
+
+
+def _splunk_status(settings: Settings) -> dict[str, Any]:
+    if settings.splunk_data_mode != "live" or settings.splunk_rest_configured:
+        return create_splunk_backend(settings).status()
+    return asyncio.run(SplunkMCPAdapter(settings, _remote_splunk_broker(settings)).status())
+
+
 def main() -> None:
     args = build_parser().parse_args()
     command = args.command or "run"
@@ -140,7 +169,7 @@ def main() -> None:
         settings = get_settings()
         store = DemoStore(settings.database_path)
         result = (
-            seed_splunk_scenario(settings, store)
+            _live_seed(settings, store)
             if settings.splunk_data_mode == "live"
             else store.reset()
         )
@@ -151,7 +180,7 @@ def main() -> None:
         )
         print(f"Reset {result['scenario']} with ticket {result['ticket']}{suffix}")
     elif command == "test-splunk":
-        status = create_splunk_backend(get_settings()).status()
+        status = _splunk_status(get_settings())
         print(f"Splunk mode: {status['mode']}")
         print(f"Ready: {status['ready']}")
         print(f"Source: {status['source']}")
@@ -159,7 +188,7 @@ def main() -> None:
             print(f"Active demo run: {status['active_run_id']}")
     elif command == "seed-splunk":
         settings = get_settings()
-        result = seed_splunk_scenario(settings, DemoStore(settings.database_path))
+        result = _live_seed(settings, DemoStore(settings.database_path))
         print(
             f"Published {result['events_published']} events to {result['index']} "
             f"as {result['demo_run_id']}"

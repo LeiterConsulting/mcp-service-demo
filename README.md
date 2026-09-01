@@ -13,7 +13,7 @@ The main story is one complete, visible loop:
 > An analyst opens `INC-1042`, clicks **Ask Splunk**, watches the agent collect evidence through MCP, and sees a sourced investigation note written back to the ticket.
 
 The incident is synthetic, but the interfaces and operations are real. MCP discovery and calls,
-Splunk REST searches, HEC publication, database reads, and ticket writes execute during the demo.
+Splunk MCP searches, HEC publication, database reads, and ticket writes execute during the demo.
 Fixture mode remains available when a Splunk instance is not nearby.
 
 ## Quick start
@@ -33,14 +33,15 @@ Open [http://127.0.0.1:8100](http://127.0.0.1:8100).
 An OpenAI API key is optional. Without one, the app uses a deterministic guided agent that still discovers and invokes the live MCP tools. With `OPENAI_API_KEY` configured, free-form chat uses an OpenAI model to select and sequence the same tools.
 
 The default `SPLUNK_DATA_MODE=fixture` is the zero-dependency path. To use a real endpoint,
-install the companion Splunk app, open **Splunk setup** in the demo header, enter the REST and HEC
-connections, confirm the MCP endpoint, and switch to live mode. The same values can still be
+install the companion Splunk app, open **Splunk setup** in the demo header, enter the MCP and HEC
+connections, and switch to live mode. Direct REST credentials are only needed for the bundled
+local Splunk MCP server. The same values can still be
 supplied through environment variables. See [`docs/SPLUNK_SETUP.md`](docs/SPLUNK_SETUP.md).
 
 The settings experience mirrors the larger discovery tool's useful connection pattern—MCP
 endpoint, masked bearer token, TLS verification, optional CA bundle, and a connection test—using
-this demo's language and visual design. The panel separately configures the Splunk REST and HEC
-connections behind the local Splunk Operations server. Saved overrides are encrypted in the persistent
+this demo's language and visual design. The panel separately configures optional direct REST access
+and the HEC publisher. Saved overrides are encrypted in the persistent
 `data` directory and take effect without a restart.
 
 ### Docker alternative

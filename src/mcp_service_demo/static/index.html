@@ -225,7 +225,7 @@
             <div>
               <span class="workspace-kicker">Demo environment</span>
               <h2 id="settings-title">Splunk connections</h2>
-              <p>Configure the agent transport, search access, and scenario publisher.</p>
+              <p>Configure the agent transport, optional fallback access, and scenario publisher.</p>
             </div>
             <button type="button" class="settings-close" id="settings-close" aria-label="Close settings">×</button>
           </header>
@@ -248,7 +248,7 @@
                 <label class="source-option">
                   <input type="radio" name="data-mode" value="live" />
                   <span class="source-option-dot"></span>
-                  <span><b>Live Splunk</b><small>Real REST searches and HEC ingestion.</small></span>
+                  <span><b>Live Splunk</b><small>Real MCP searches and HEC ingestion.</small></span>
                 </label>
               </div>
             </section>
@@ -294,12 +294,12 @@
               <section class="settings-section">
                 <div class="settings-section-heading">
                   <div>
-                    <span class="settings-step">03 · Search</span>
-                    <h3>Splunk search access</h3>
+                    <span class="settings-step">03 · Fallback</span>
+                    <h3>Direct REST access</h3>
                   </div>
-                  <span class="settings-role">Read only</span>
+                  <span class="settings-role">Optional · read only</span>
                 </div>
-                <p class="settings-help">The MCP server runs deterministic SPL through Splunk's management API.</p>
+                <p class="settings-help">Not required when the selected MCP endpoint provides <code>splunk_run_query</code>. Keep this for the bundled local MCP server.</p>
 
                 <label class="field-label" for="splunk-rest-url">Management API URL</label>
                 <input class="settings-input" id="splunk-rest-url" type="url" placeholder="https://splunk.example.com:8089" required />
@@ -369,7 +369,7 @@
           <footer class="settings-footer">
             <p>Saved tokens are encrypted locally and never returned by the API.</p>
             <div>
-              <button class="button secondary" type="button" id="test-splunk-button">Test Splunk search</button>
+              <button class="button secondary" type="button" id="test-splunk-button">Test live search</button>
               <button class="button primary" type="submit" id="save-splunk-button">Save connection</button>
             </div>
           </footer>
@@ -378,6 +378,6 @@
 
       <div class="toast-region" id="toast-region" aria-live="polite"></div>
     </div>
-    <script src="/static/app.js?v=0.3.1" defer></script>
+    <script src="/static/app.js?v=0.3.3" defer></script>
   </body>
 </html>

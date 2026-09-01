@@ -13,8 +13,9 @@ from .agent import DemoAgent
 from .config import Settings, get_environment_settings, get_settings
 from .connection_settings import SplunkConnectionStore
 from .mcp_client import MCPBroker, MCPRemoteTarget
-from .scenario import seed_splunk_scenario
+from .scenario import seed_splunk_scenario_via_mcp
 from .splunk_backend import LiveSplunkBackend
+from .splunk_mcp_adapter import SplunkMCPAdapter
 from .storage import DemoStore
 
 settings = get_settings()
@@ -121,7 +122,11 @@ async def test_splunk_settings(update: SplunkConnectionUpdate) -> dict[str, Any]
                 "message": "Fixture telemetry is ready. No external Splunk connection is used.",
                 "details": {"mode": "fixture", "ready": True},
             }
-        details = await asyncio.to_thread(LiveSplunkBackend(candidate).status)
+        if candidate.splunk_rest_configured:
+            details = await asyncio.to_thread(LiveSplunkBackend(candidate).status)
+        else:
+            candidate_broker = MCPBroker({"splunk": _splunk_mcp_target(candidate)})
+            details = await SplunkMCPAdapter(candidate, candidate_broker).status()
         scenario_message = (
             f"Demo run {details['active_run_id']} is searchable."
             if details.get("ready")
@@ -177,7 +182,7 @@ async def test_splunk_mcp_settings(update: SplunkConnectionUpdate) -> dict[str, 
 @app.get("/api/splunk/status")
 async def splunk_status() -> dict[str, Any]:
     try:
-        return await broker.call("splunk", "get_splunk_status", {})
+        return await SplunkMCPAdapter(get_settings(), broker).status()
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Splunk is not ready: {exc}") from exc
 
@@ -255,7 +260,7 @@ async def reset_demo() -> dict[str, Any]:
     try:
         runtime_settings = get_settings()
         if runtime_settings.splunk_data_mode == "live":
-            return await asyncio.to_thread(seed_splunk_scenario, runtime_settings, store)
+            return await seed_splunk_scenario_via_mcp(runtime_settings, broker, store)
         return store.reset()
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Unable to reset the demo: {exc}") from exc

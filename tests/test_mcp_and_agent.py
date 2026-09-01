@@ -3,7 +3,7 @@ from __future__ import annotations
 import mcp_service_demo.mcp_client as mcp_client_module
 from mcp_service_demo.agent import DemoAgent
 from mcp_service_demo.config import get_settings
-from mcp_service_demo.mcp_client import MCPBroker, MCPRemoteTarget
+from mcp_service_demo.mcp_client import MCPBroker, MCPRemoteTarget, MCPTool
 from mcp_service_demo.servers.splunk import splunk_mcp
 from mcp_service_demo.servers.tickets import ticket_mcp
 from mcp_service_demo.storage import DemoStore
@@ -59,6 +59,126 @@ async def test_ticket_investigation_completes_the_cross_system_loop(tmp_path, mo
     assert updated is not None
     assert updated["status"] == "Investigating"
     assert updated["notes"][-1]["author"] == "Splunk Investigation Agent"
+    assert "connection pool" in updated["notes"][-1]["body"]
+
+
+async def test_guided_agent_uses_real_splunk_query_tool_when_available(tmp_path, monkeypatch):
+    database_path = tmp_path / "demo.db"
+    monkeypatch.setenv("DEMO_DATABASE_PATH", str(database_path))
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    store = DemoStore(database_path)
+    store.reset()
+    ticket_broker = MCPBroker({"tickets": ticket_mcp})
+
+    class QueryToolBroker:
+        async def list_tools(self):
+            ticket_tools = await ticket_broker.list_tools()
+            return [
+                MCPTool(
+                    server="splunk",
+                    name="splunk_run_query",
+                    title="Run Splunk Query",
+                    description="Run SPL in Splunk",
+                    input_schema={"type": "object"},
+                ),
+                *ticket_tools,
+            ]
+
+        async def call(self, server, tool, arguments):
+            if server == "tickets":
+                return await ticket_broker.call(server, tool, arguments)
+            assert tool == "splunk_run_query"
+            query = arguments["query"]
+            if 'row_kind="metric"' in query:
+                rows = [
+                    {
+                        "row_kind": "metric",
+                        "period": "current",
+                        "requests": "100",
+                        "errors": "18",
+                        "error_rate_pct": "18.0",
+                        "p50_ms": "410",
+                        "p95_ms": "2840",
+                    },
+                    {
+                        "row_kind": "metric",
+                        "period": "baseline",
+                        "requests": "100",
+                        "errors": "1",
+                        "error_rate_pct": "1.0",
+                        "p50_ms": "90",
+                        "p95_ms": "240",
+                    },
+                    {
+                        "row_kind": "change",
+                        "_time": "2026-09-01T12:00:00",
+                        "message": "deployed checkout-api 4.18.2",
+                        "version": "4.18.2",
+                        "host": "deploy-01",
+                    },
+                ]
+            elif " by period " in query:
+                rows = [
+                    {
+                        "period": "current",
+                        "requests": "100",
+                        "errors": "18",
+                        "error_rate_pct": "18.0",
+                        "p50_ms": "410",
+                        "p95_ms": "2840",
+                    },
+                    {
+                        "period": "baseline",
+                        "requests": "100",
+                        "errors": "1",
+                        "error_rate_pct": "1.0",
+                        "p50_ms": "90",
+                        "p95_ms": "240",
+                    },
+                ]
+            elif "trace_id=" in query:
+                rows = [
+                    {
+                        "_time": "2026-09-01T12:05:00",
+                        "service": service,
+                        "level": "ERROR",
+                        "event_type": "request",
+                        "message": "inventory-client connection pool exhausted",
+                        "status_code": "503",
+                        "duration_ms": "2840",
+                        "host": f"{service}-01",
+                        "trace_id": "tr-hot-001",
+                        "version": "4.18.2",
+                    }
+                    for service in ("edge-gateway", "checkout-api", "inventory-api")
+                ]
+            else:
+                rows = [
+                    {
+                        "_time": "2026-09-01T12:05:00",
+                        "service": "checkout-api",
+                        "level": "ERROR",
+                        "event_type": "request",
+                        "message": "inventory-client connection pool exhausted",
+                        "status_code": "503",
+                        "duration_ms": "2840",
+                        "host": "checkout-01",
+                        "trace_id": "tr-hot-001",
+                        "version": "4.18.2",
+                    }
+                ]
+            return {"results": rows, "truncated": False, "total_rows": len(rows)}
+
+    agent = DemoAgent(get_settings(), QueryToolBroker())
+    result = await agent.investigate_ticket("INC-1042", write_back=True)
+    updated = store.get_ticket("INC-1042")
+
+    splunk_events = [event for event in result.timeline if event.server == "splunk"]
+    assert [event.tool for event in splunk_events] == ["splunk_run_query"] * 4
+    assert all(event.arguments["app"] == "mcp_service_demo" for event in splunk_events)
+    assert result.ticket_updated is True
+    assert updated is not None
+    assert "18.0%" in updated["notes"][-1]["body"]
     assert "connection pool" in updated["notes"][-1]["body"]
 
 

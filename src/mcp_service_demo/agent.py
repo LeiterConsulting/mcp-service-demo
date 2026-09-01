@@ -10,6 +10,7 @@ from openai import AsyncOpenAI
 
 from .config import Settings
 from .mcp_client import MCPBroker, MCPTool
+from .splunk_mcp_adapter import SplunkCall, SplunkMCPAdapter
 
 WRITE_TOOLS = {"tickets__add_work_note", "tickets__update_ticket_status"}
 
@@ -48,6 +49,7 @@ class DemoAgent:
     def __init__(self, settings: Settings, broker: MCPBroker):
         self.settings = settings
         self.broker = broker
+        self.splunk = SplunkMCPAdapter(settings, broker)
 
     async def _call(
         self,
@@ -108,11 +110,19 @@ class DemoAgent:
             return f"{result.get('match_count_returned', 0)} events · top pattern: {pattern}"
         if tool == "trace_request":
             return f"Found {len(result.get('events', []))} events across the request path"
+        if tool == "splunk_run_query":
+            return f"Splunk returned {len(result.get('results', []))} rows"
         if tool == "add_work_note":
             return f"Work note added to {result.get('ticket_id')}"
         if tool == "update_ticket_status":
             return "Ticket status updated"
         return "Tool completed"
+
+    def _tracked_splunk_call(self, timeline: list[ToolEvent]) -> SplunkCall:
+        async def call(tool: str, arguments: dict[str, Any], title: str) -> Any:
+            return await self._call("splunk", tool, arguments, timeline, title)
+
+        return call
 
     async def investigate_ticket(self, ticket_id: str, write_back: bool = True) -> AgentResult:
         timeline: list[ToolEvent] = []
@@ -120,37 +130,31 @@ class DemoAgent:
             "tickets", "get_ticket", {"ticket_id": ticket_id}, timeline, "Read ticket context"
         )
         service = ticket["service"]
-        health = await self._call(
-            "splunk",
-            "get_service_health",
-            {"service": service, "minutes": 30},
-            timeline,
-            "Check service health",
+        splunk_call = self._tracked_splunk_call(timeline)
+        health = await self.splunk.get_service_health(
+            service,
+            30,
+            call=splunk_call,
         )
-        baseline = await self._call(
-            "splunk",
-            "compare_service_baseline",
-            {"service": service, "minutes": 30},
-            timeline,
-            "Compare with baseline",
+        baseline = await self.splunk.compare_service_baseline(
+            service,
+            30,
+            call=splunk_call,
         )
-        logs = await self._call(
-            "splunk",
-            "search_logs",
-            {"service": service, "keywords": "ERROR 503", "minutes": 30, "limit": 12},
-            timeline,
-            "Find correlated errors",
+        logs = await self.splunk.search_logs(
+            service,
+            "ERROR 503",
+            30,
+            12,
+            call=splunk_call,
         )
 
         trace = None
         events = logs.get("events", [])
         if events and events[0].get("trace_id"):
-            trace = await self._call(
-                "splunk",
-                "trace_request",
-                {"trace_id": events[0]["trace_id"]},
-                timeline,
-                "Follow a failed request",
+            trace = await self.splunk.trace_request(
+                events[0]["trace_id"],
+                call=splunk_call,
             )
 
         note_body = self._build_work_note(ticket, health, baseline, logs, trace)
@@ -308,12 +312,9 @@ class DemoAgent:
 
         trace_match = re.search(r"tr-[a-z0-9-]+", text)
         if trace_match:
-            trace = await self._call(
-                "splunk",
-                "trace_request",
-                {"trace_id": trace_match.group(0)},
-                timeline,
-                "Trace request",
+            trace = await self.splunk.trace_request(
+                trace_match.group(0),
+                call=self._tracked_splunk_call(timeline),
             )
             services = list(dict.fromkeys(event["service"] for event in trace.get("events", [])))
             message_text = (
@@ -326,21 +327,20 @@ class DemoAgent:
             (name for name in ("checkout-api", "inventory-api", "payment-api") if name in text),
             "checkout-api",
         )
-        health = await self._call(
-            "splunk",
-            "get_service_health",
-            {"service": service, "minutes": 30},
-            timeline,
-            "Check service health",
+        splunk_call = self._tracked_splunk_call(timeline)
+        health = await self.splunk.get_service_health(
+            service,
+            30,
+            call=splunk_call,
         )
         logs = None
         if any(word in text for word in ("why", "error", "cause", "changed", "investigate")):
-            logs = await self._call(
-                "splunk",
-                "search_logs",
-                {"service": service, "keywords": "ERROR", "minutes": 30, "limit": 10},
-                timeline,
-                "Inspect recent errors",
+            logs = await self.splunk.search_logs(
+                service,
+                "ERROR",
+                30,
+                10,
+                call=splunk_call,
             )
         metrics = health["metrics"]
         response = (
@@ -349,7 +349,8 @@ class DemoAgent:
         )
         if logs:
             pattern = (logs.get("top_patterns") or [{}])[0].get("pattern")
-            response += f" The dominant error pattern is `{pattern}`."
+            if pattern:
+                response += f" The dominant error pattern is `{pattern}`."
         if health.get("recent_changes"):
             response += " A checkout-api deployment appears immediately before the degraded window."
         return AgentResult(message=response, mode="guided", timeline=timeline)

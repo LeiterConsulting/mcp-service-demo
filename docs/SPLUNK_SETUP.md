@@ -4,7 +4,8 @@ Live mode keeps the scenario deterministic while making the operational path rea
 
 1. the service desk stores real local tickets in SQLite;
 2. the loader publishes a fresh synthetic incident to Splunk through HEC;
-3. the Splunk MCP server runs scoped SPL through Splunk's management REST API;
+3. the configured Splunk MCP endpoint runs scoped SPL with `splunk_run_query` (or the bundled local
+   MCP server runs the same searches through Splunk's management REST API);
 4. the agent reads the ticket, uses its service context to query Splunk, and writes evidence back
    through the ticket MCP server.
 
@@ -33,13 +34,14 @@ The archive contains no credentials or event data. Installing apps and creating 
 requires Splunk administrator access. In a managed Splunk Cloud environment, use the app install
 and management API process approved for that tenant.
 
-## 2. Create HEC and REST credentials
+## 2. Create HEC and search credentials
 
 Create an HTTP Event Collector token that is allowed to write to `mcp_demo`. The loader sends
 structured events to `/services/collector/event` with `Authorization: Splunk <HEC token>`.
 
-The MCP server also needs an identity that can search `mcp_demo` through the management REST API.
-It supports one of:
+When using Splunk's MCP endpoint, its bearer token is the search identity and direct REST
+credentials are not required. If you use the bundled local Splunk MCP server instead, it needs one
+of the following identities for the management REST API:
 
 - a bearer/JWT token (`SPLUNK_REST_TOKEN_SCHEME=Bearer`);
 - a Splunk session token (`SPLUNK_REST_TOKEN_SCHEME=Splunk`); or
@@ -56,13 +58,12 @@ the three responsibilities:
 
 - **MCP transport** — Streamable HTTP endpoint, masked bearer token, TLS verification, and an
   optional CA bundle;
-- **Splunk search access** — management API URL, masked access token, token type, TLS verification,
-  and an optional CA bundle;
+- **Direct REST access** — optional management API fallback for the bundled local MCP server;
 - **Scenario publisher** — HEC URL, masked HEC token, TLS verification, and an optional CA bundle.
 
-Use **Test MCP endpoint** to prove tool discovery, then **Test Splunk search** before saving. A
-successful search test identifies the Splunk server and reports whether a deterministic demo run
-is already searchable. Blank token fields preserve the current secret. Saved secrets are encrypted
+Use **Test MCP endpoint** to prove tool discovery, then **Test live search** before saving. A
+successful search test uses either the MCP query tool or the configured REST fallback and reports
+whether a deterministic demo run is already searchable. Blank token fields preserve the current secret. Saved secrets are encrypted
 locally and are never returned by the settings API. The new profile is picked up without restarting
 the demo.
 
@@ -75,14 +76,15 @@ use the settings panel only on a trusted demo host.
 Copy `.env.example` to `.env` and set at least:
 
 ```dotenv
-SPLUNK_MCP_URL=http://127.0.0.1:8101/mcp
-# SPLUNK_MCP_TOKEN=your-remote-mcp-bearer-token
+SPLUNK_MCP_URL=https://your-splunk-management-host:8089/services/mcp
+SPLUNK_MCP_TOKEN=your-remote-mcp-bearer-token
 
 SPLUNK_DATA_MODE=live
 
-SPLUNK_REST_URL=https://your-splunk-management-host:8089
-SPLUNK_REST_TOKEN=your-rest-token
-SPLUNK_REST_TOKEN_SCHEME=Bearer
+# Only required when SPLUNK_MCP_URL points to the bundled local MCP server:
+# SPLUNK_REST_URL=https://your-splunk-management-host:8089
+# SPLUNK_REST_TOKEN=your-rest-token
+# SPLUNK_REST_TOKEN_SCHEME=Bearer
 
 SPLUNK_HEC_URL=https://your-hec-host:8088
 SPLUNK_HEC_TOKEN=your-hec-token
@@ -107,8 +109,9 @@ mcp-service-demo seed-splunk
 mcp-service-demo run
 ```
 
-`test-splunk` proves REST authentication and shows whether an active run exists. `seed-splunk`
-resets the local tickets, publishes a new event stream, and waits until the run is searchable.
+`test-splunk` proves MCP search access (or REST fallback authentication) and shows whether an active
+run exists. `seed-splunk` resets the local tickets, publishes a new event stream, and waits through
+the MCP search connection until the run is searchable.
 Once the application is running, **Reset demo** repeats that coordinated reset and publication.
 
 Open [http://127.0.0.1:8100](http://127.0.0.1:8100). The header will say **Splunk live**, and the
@@ -119,8 +122,8 @@ When the demo itself runs in Docker and Splunk runs on the host, use a host-reac
 
 ## Troubleshooting
 
-- **REST works but the scenario is not found:** confirm the HEC token can write to `mcp_demo`, the
-  source type is `mcp:demo:event`, and the REST identity can search that index.
+- **Search works but the scenario is not found:** confirm the HEC token can write to `mcp_demo`, the
+  source type is `mcp:demo:event`, and the MCP or REST identity can search that index.
 - **Certificate verification fails:** install the issuing CA and configure the relevant CA bundle.
 - **The reset times out:** increase `SPLUNK_INDEX_WAIT_SECONDS` above its 30-second default.
 - **Splunk Cloud endpoints differ:** use the HEC and management API URLs assigned to the tenant;

@@ -117,10 +117,10 @@ function renderSplunkSettings(settings) {
   $("#splunk-rest-token").value = "";
   $("#splunk-rest-token").placeholder = settings.rest_token_configured
     ? "Configured — leave blank to keep"
-    : "Enter a Splunk access token";
+    : "Optional direct REST token";
   $("#rest-token-hint").textContent = settings.rest_token_configured
     ? "A token is configured. Enter a value only to replace it."
-    : "Required for live Splunk unless basic auth is supplied by the environment.";
+    : "Only required when the bundled local MCP server performs the searches.";
   $("#splunk-token-scheme").value = settings.rest_token_scheme || "Bearer";
   $("#splunk-rest-verify").checked = settings.rest_verify_ssl !== false;
   $("#splunk-rest-ca").value = settings.rest_ca_bundle_path || "";
