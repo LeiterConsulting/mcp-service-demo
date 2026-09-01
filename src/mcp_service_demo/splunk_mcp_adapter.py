@@ -308,7 +308,8 @@ class SplunkMCPAdapter:
         rows = await self._query(
             (
                 f"{self._active_base(normalized)} earliest=-{window}m {term_clause} "
-                f"| sort 0 - _time | head {result_limit} "
+                '| eval trace_priority=if(match(trace_id,"^tr-hot-"),0,1) '
+                f"| sort 0 trace_priority - _time | head {result_limit} "
                 "| table _time service level event_type message status_code duration_ms "
                 "host trace_id version"
             ),
