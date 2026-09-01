@@ -550,6 +550,7 @@ button { color: inherit; }
   .topbar { height: auto; min-height: 66px; grid-template-columns: 1fr auto; gap: 8px; padding-block: 10px; }
   .primary-nav { grid-column: 1 / -1; grid-row: 2; width: 100%; justify-content: center; }
   .topbar-actions .button { display: none; }
+  .topbar-actions #settings-button { display: inline-flex; }
   .view { min-height: calc(100vh - 110px); }
   .briefing-wrap { padding: 38px 20px; }
   .hero-grid { gap: 35px; }
