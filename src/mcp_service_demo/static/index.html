@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="A live demonstration of an agent using MCP to investigate Splunk telemetry and enrich a service ticket."
+    />
+    <title>MCP Service Demo</title>
+    <link rel="stylesheet" href="/static/styles.css?v=0.1.0" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <button class="brand" data-view="briefing" aria-label="Open MCP briefing">
+          <span class="brand-mark" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </span>
+          <span>
+            <strong>Northstar Ops Lab</strong>
+            <small>MCP service demo</small>
+          </span>
+        </button>
+
+        <nav class="primary-nav" aria-label="Demo sections">
+          <button class="nav-item active" data-view="briefing">MCP in 60 seconds</button>
+          <button class="nav-item" data-view="agent">Agent</button>
+          <button class="nav-item" data-view="desk">Service desk</button>
+        </nav>
+
+        <div class="topbar-actions">
+          <span class="connection-pill" id="connection-pill">
+            <span class="status-dot"></span>
+            <span>Connecting</span>
+          </span>
+          <button class="button ghost small" id="reset-button" title="Restore the original scenario">
+            Reset demo
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <section class="view active" id="view-briefing" aria-labelledby="briefing-title">
+          <div class="briefing-wrap">
+            <div class="hero-grid">
+              <div class="hero-copy">
+                <div class="eyebrow"><span></span> Live protocol · Synthetic data</div>
+                <h1 id="briefing-title">One agent. Two systems.<br /><em>A shared protocol.</em></h1>
+                <p class="hero-lede">
+                  MCP gives an AI agent a consistent way to discover tools, read operational context,
+                  and take authorized action—without building a bespoke integration for every conversation.
+                </p>
+                <div class="hero-actions">
+                  <button class="button primary" data-view="agent">Try the agent <span>→</span></button>
+                  <button class="button secondary" data-view="desk">Open the service desk</button>
+                </div>
+                <div class="hero-proof">
+                  <span><b>9</b> live MCP tools</span>
+                  <span><b>2</b> independent servers</span>
+                  <span><b>1</b> visible workflow</span>
+                </div>
+              </div>
+
+              <div class="protocol-stage" aria-label="MCP architecture">
+                <div class="stage-glow"></div>
+                <article class="system-card agent-system">
+                  <div class="system-icon agent-icon">✦</div>
+                  <div>
+                    <span class="system-kicker">MCP host</span>
+                    <strong>Incident agent</strong>
+                    <small>Understands intent and chooses tools</small>
+                  </div>
+                </article>
+
+                <div class="protocol-line">
+                  <span class="packet one"></span>
+                  <span class="packet two"></span>
+                  <div class="protocol-badge">
+                    <b>MCP</b>
+                    <small>discover · call · return</small>
+                  </div>
+                </div>
+
+                <div class="server-stack">
+                  <article class="system-card splunk-system">
+                    <div class="system-icon splunk-icon">S</div>
+                    <div>
+                      <span class="system-kicker">Read only</span>
+                      <strong>Splunk Operations</strong>
+                      <small>Health · logs · baselines · traces</small>
+                    </div>
+                    <span class="live-badge">Live</span>
+                  </article>
+                  <article class="system-card desk-system">
+                    <div class="system-icon desk-icon">N</div>
+                    <div>
+                      <span class="system-kicker">Read + write</span>
+                      <strong>Northstar Service Desk</strong>
+                      <small>Queues · tickets · work notes · status</small>
+                    </div>
+                    <span class="live-badge">Live</span>
+                  </article>
+                </div>
+              </div>
+            </div>
+
+            <div class="briefing-lower">
+              <article class="story-panel">
+                <div class="panel-heading">
+                  <span class="step-number">Demo story</span>
+                  <h2>From customer report to sourced action</h2>
+                </div>
+                <div class="story-steps">
+                  <div class="story-step">
+                    <span>01</span>
+                    <div><b>Read the ticket</b><small>The agent receives service, impact, and user context.</small></div>
+                  </div>
+                  <div class="story-arrow">→</div>
+                  <div class="story-step">
+                    <span>02</span>
+                    <div><b>Ask Splunk</b><small>It calculates health, finds errors, and follows a failed trace.</small></div>
+                  </div>
+                  <div class="story-arrow">→</div>
+                  <div class="story-step">
+                    <span>03</span>
+                    <div><b>Enrich the record</b><small>A sourced work note is written through the ticket MCP server.</small></div>
+                  </div>
+                </div>
+              </article>
+
+              <article class="catalog-panel">
+                <div class="panel-heading inline">
+                  <div>
+                    <span class="step-number">Discovered at runtime</span>
+                    <h2>Available tools</h2>
+                  </div>
+                  <span class="tool-count" id="tool-count">—</span>
+                </div>
+                <div class="mini-tool-list" id="mini-tool-list">
+                  <div class="skeleton-line"></div><div class="skeleton-line short"></div>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-agent" aria-labelledby="agent-title">
+          <div class="workspace agent-workspace">
+            <div class="workspace-main chat-column">
+              <header class="workspace-header">
+                <div>
+                  <span class="workspace-kicker">Interactive agent</span>
+                  <h1 id="agent-title">Operations copilot</h1>
+                </div>
+                <span class="mode-badge" id="agent-mode">Guided MCP</span>
+              </header>
+              <div class="chat-thread" id="chat-thread" aria-live="polite"></div>
+              <div class="prompt-row" id="prompt-row">
+                <button data-prompt="Is checkout-api healthy right now?">Check checkout health</button>
+                <button data-prompt="Why are checkout-api errors increasing?">Find the cause</button>
+                <button data-prompt="Show my ticket queue">Show my queue</button>
+                <button data-prompt="Investigate INC-1042 and update the ticket">Investigate + update</button>
+              </div>
+              <form class="composer" id="chat-form">
+                <label class="sr-only" for="chat-input">Ask the operations agent</label>
+                <textarea id="chat-input" rows="1" placeholder="Ask about a service or ticket…"></textarea>
+                <button class="send-button" type="submit" aria-label="Send message">↑</button>
+              </form>
+              <p class="composer-note">The activity panel shows every MCP tool the agent invokes.</p>
+            </div>
+
+            <aside class="activity-column">
+              <header class="activity-header">
+                <div>
+                  <span class="workspace-kicker">Protocol activity</span>
+                  <h2>MCP timeline</h2>
+                </div>
+                <span class="activity-status"><i></i> Ready</span>
+              </header>
+              <div class="timeline-empty" id="timeline-empty">
+                <div class="empty-orbit"><span></span><span></span><span></span></div>
+                <b>Tool calls will appear here</b>
+                <p>Choose a prompt to watch the agent discover context across both systems.</p>
+              </div>
+              <div class="tool-timeline" id="tool-timeline"></div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" id="view-desk" aria-labelledby="desk-title">
+          <div class="workspace desk-workspace">
+            <aside class="queue-column">
+              <header class="queue-header">
+                <div>
+                  <span class="workspace-kicker">Northstar service desk</span>
+                  <h1 id="desk-title">My work</h1>
+                </div>
+                <span class="avatar">MC</span>
+              </header>
+              <div class="queue-filter">
+                <button class="active">Assigned to me <span id="queue-count">—</span></button>
+                <button>Unassigned <span>2</span></button>
+              </div>
+              <div class="ticket-list" id="ticket-list"></div>
+            </aside>
+
+            <section class="ticket-column" id="ticket-column">
+              <div class="ticket-loading">
+                <div class="loading-ring"></div>
+                <span>Loading ticket</span>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+
+      <div class="toast-region" id="toast-region" aria-live="polite"></div>
+    </div>
+    <script src="/static/app.js?v=0.1.0" defer></script>
+  </body>
+</html>

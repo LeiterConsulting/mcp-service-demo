@@ -1,0 +1,18 @@
+services:
+  demo:
+    build: .
+    ports:
+      - "8100:8100"
+      - "8101:8101"
+      - "8102:8102"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5-mini}
+      SPLUNK_MCP_URL: http://127.0.0.1:8101/mcp
+      TICKET_MCP_URL: http://127.0.0.1:8102/mcp
+    volumes:
+      - demo-data:/app/data
+
+volumes:
+  demo-data:
+
