@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 
+import httpx2
 from mcp import Client
+from mcp.client.streamable_http import streamable_http_client
 from mcp.server.mcpserver import MCPServer
 
 
@@ -21,16 +25,53 @@ class MCPTool:
         return f"{self.server}__{self.name}"
 
 
+@dataclass(frozen=True)
+class MCPRemoteTarget:
+    """Streamable HTTP MCP endpoint with optional bearer authentication and TLS policy."""
+
+    url: str
+    token: str | None = None
+    verify: bool | str = True
+
+
+MCPClientTarget = str | MCPServer | MCPRemoteTarget
+MCPClientTargetProvider = Callable[[], MCPClientTarget]
+
+
 class MCPBroker:
     """Discovers and invokes tools across named MCP servers."""
 
-    def __init__(self, targets: dict[str, str | MCPServer]):
+    def __init__(self, targets: dict[str, MCPClientTarget | MCPClientTargetProvider]):
         self.targets = targets
+
+    def _target(self, server_name: str) -> MCPClientTarget:
+        target = self.targets[server_name]
+        return target() if callable(target) else target
+
+    @staticmethod
+    @asynccontextmanager
+    async def _client(target: MCPClientTarget) -> AsyncIterator[Client]:
+        if not isinstance(target, MCPRemoteTarget):
+            async with Client(target, raise_exceptions=True) as client:
+                yield client
+            return
+
+        headers = {"Authorization": f"Bearer {target.token}"} if target.token else None
+        timeout = httpx2.Timeout(30.0, read=300.0)
+        async with httpx2.AsyncClient(
+            headers=headers,
+            verify=target.verify,
+            timeout=timeout,
+            follow_redirects=True,
+        ) as http_client:
+            transport = streamable_http_client(target.url, http_client=http_client)
+            async with Client(transport, raise_exceptions=True) as client:
+                yield client
 
     async def list_tools(self) -> list[MCPTool]:
         discovered: list[MCPTool] = []
-        for server_name, target in self.targets.items():
-            async with Client(target, raise_exceptions=True) as client:
+        for server_name in self.targets:
+            async with self._client(self._target(server_name)) as client:
                 result = await client.list_tools()
             for tool in result.tools:
                 discovered.append(
@@ -47,7 +88,7 @@ class MCPBroker:
     async def call(self, server: str, tool: str, arguments: dict[str, Any]) -> Any:
         if server not in self.targets:
             raise KeyError(f"Unknown MCP server {server!r}")
-        async with Client(self.targets[server], raise_exceptions=True) as client:
+        async with self._client(self._target(server)) as client:
             result = await client.call_tool(tool, arguments)
         if result.is_error:
             message = "\n".join(

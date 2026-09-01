@@ -14,6 +14,9 @@ from .config import Settings
 
 MASK = "***"
 _EDITABLE_FIELDS = {
+    "mcp_url",
+    "mcp_verify_ssl",
+    "mcp_ca_bundle_path",
     "data_mode",
     "rest_url",
     "rest_token_scheme",
@@ -23,7 +26,7 @@ _EDITABLE_FIELDS = {
     "hec_verify_ssl",
     "hec_ca_bundle_path",
 }
-_SECRET_FIELDS = {"rest_token", "hec_token"}
+_SECRET_FIELDS = {"mcp_token", "rest_token", "hec_token"}
 
 
 class SplunkConnectionStore:
@@ -77,6 +80,11 @@ class SplunkConnectionStore:
         if not saved:
             return base
 
+        mcp_url = _url(saved.get("mcp_url", base.splunk_mcp_url), "Splunk MCP endpoint")
+        mcp_verify = _verify_value(
+            saved.get("mcp_verify_ssl", base.splunk_mcp_verify is not False),
+            saved.get("mcp_ca_bundle_path"),
+        )
         data_mode = _data_mode(saved.get("data_mode", base.splunk_data_mode))
         rest_url = _url(saved.get("rest_url", base.splunk_rest_url), "Splunk API URL")
         rest_scheme = _token_scheme(
@@ -95,6 +103,9 @@ class SplunkConnectionStore:
 
         return replace(
             base,
+            splunk_mcp_url=mcp_url.rstrip("/"),
+            splunk_mcp_token=_secret(saved, "mcp_token", base.splunk_mcp_token),
+            splunk_mcp_verify=mcp_verify,
             splunk_data_mode=data_mode,
             splunk_rest_url=rest_url.rstrip("/"),
             splunk_rest_token=_secret(saved, "rest_token", base.splunk_rest_token),
@@ -116,6 +127,11 @@ class SplunkConnectionStore:
 
     def safe_export(self, base: Settings) -> dict[str, Any]:
         effective = self.apply(base)
+        mcp_ca = (
+            str(effective.splunk_mcp_verify)
+            if isinstance(effective.splunk_mcp_verify, str)
+            else None
+        )
         rest_ca = (
             str(effective.splunk_rest_verify)
             if isinstance(effective.splunk_rest_verify, str)
@@ -128,6 +144,11 @@ class SplunkConnectionStore:
         )
         return {
             "source": "saved profile" if self.configured else "environment defaults",
+            "mcp_url": effective.splunk_mcp_url,
+            "mcp_token": MASK if effective.splunk_mcp_token else "",
+            "mcp_token_configured": bool(effective.splunk_mcp_token),
+            "mcp_verify_ssl": effective.splunk_mcp_verify is not False,
+            "mcp_ca_bundle_path": mcp_ca,
             "data_mode": effective.splunk_data_mode,
             "rest_url": effective.splunk_rest_url,
             "rest_token": MASK if effective.splunk_rest_token else "",
@@ -162,6 +183,8 @@ class SplunkConnectionStore:
             current.pop("rest_token", None)
         if update.get("clear_hec_token"):
             current.pop("hec_token", None)
+        if update.get("clear_mcp_token"):
+            current.pop("mcp_token", None)
         current["version"] = 1
         return current
 

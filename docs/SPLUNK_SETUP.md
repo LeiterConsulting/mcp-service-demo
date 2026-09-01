@@ -52,16 +52,19 @@ Use a narrowly scoped demo account and keep its secrets in `.env`, which is igno
 ### Browser setup
 
 Start the demo, open **Splunk setup** in the header, and choose **Live Splunk**. The panel separates
-the two responsibilities:
+the three responsibilities:
 
+- **MCP transport** — Streamable HTTP endpoint, masked bearer token, TLS verification, and an
+  optional CA bundle;
 - **Splunk search access** — management API URL, masked access token, token type, TLS verification,
   and an optional CA bundle;
 - **Scenario publisher** — HEC URL, masked HEC token, TLS verification, and an optional CA bundle.
 
-Use **Test search connection** before saving. A successful test identifies the Splunk server and
-reports whether a deterministic demo run is already searchable. Blank token fields preserve the
-current secret. Saved secrets are encrypted locally and are never returned by the settings API.
-The new profile is picked up by the Splunk Operations MCP server without restarting the demo.
+Use **Test MCP endpoint** to prove tool discovery, then **Test Splunk search** before saving. A
+successful search test identifies the Splunk server and reports whether a deterministic demo run
+is already searchable. Blank token fields preserve the current secret. Saved secrets are encrypted
+locally and are never returned by the settings API. The new profile is picked up without restarting
+the demo.
 
 The encrypted profile and its local key live beside `demo.db` in the `data` directory, which is a
 named volume in the supplied Docker Compose configuration. Treat that directory as sensitive and
@@ -72,6 +75,9 @@ use the settings panel only on a trusted demo host.
 Copy `.env.example` to `.env` and set at least:
 
 ```dotenv
+SPLUNK_MCP_URL=http://127.0.0.1:8101/mcp
+# SPLUNK_MCP_TOKEN=your-remote-mcp-bearer-token
+
 SPLUNK_DATA_MODE=live
 
 SPLUNK_REST_URL=https://your-splunk-management-host:8089
@@ -87,8 +93,8 @@ scenario `checkout-degradation-v1`. If these names are changed, update both the 
 the companion app configuration.
 
 Environment variables are defaults. Values saved through **Splunk setup** take precedence for the
-data mode, REST connection, HEC connection, TLS settings, and CA paths. The CLI uses that same
-effective profile.
+MCP endpoint, MCP bearer token, data mode, REST connection, HEC connection, TLS settings, and CA
+paths. The CLI uses that same effective profile.
 
 TLS verification is enabled. A CA file can be supplied with `SPLUNK_REST_CA_BUNDLE` and
 `SPLUNK_HEC_CA_BUNDLE`. Disabling verification is provided only for a self-signed local lab.

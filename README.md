@@ -34,13 +34,14 @@ An OpenAI API key is optional. Without one, the app uses a deterministic guided 
 
 The default `SPLUNK_DATA_MODE=fixture` is the zero-dependency path. To use a real endpoint,
 install the companion Splunk app, open **Splunk setup** in the demo header, enter the REST and HEC
-connections, and switch to live mode. The same values can still be supplied through environment
-variables. See [`docs/SPLUNK_SETUP.md`](docs/SPLUNK_SETUP.md).
+connections, confirm the MCP endpoint, and switch to live mode. The same values can still be
+supplied through environment variables. See [`docs/SPLUNK_SETUP.md`](docs/SPLUNK_SETUP.md).
 
-The settings experience mirrors the larger discovery tool's useful connection pattern—endpoint,
-masked token, TLS verification, optional CA bundle, and a connection test—using this demo's
-language and visual design. Saved overrides are encrypted in the persistent `data` directory and
-become available to the Splunk MCP server without a restart.
+The settings experience mirrors the larger discovery tool's useful connection pattern—MCP
+endpoint, masked bearer token, TLS verification, optional CA bundle, and a connection test—using
+this demo's language and visual design. The panel separately configures the Splunk REST and HEC
+connections behind the local Splunk Operations server. Saved overrides are encrypted in the persistent
+`data` directory and take effect without a restart.
 
 ### Docker alternative
 

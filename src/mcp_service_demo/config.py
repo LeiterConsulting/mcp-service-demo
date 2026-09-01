@@ -35,6 +35,8 @@ class Settings:
     ticket_mcp_host: str
     ticket_mcp_port: int
     splunk_mcp_url: str
+    splunk_mcp_token: str | None
+    splunk_mcp_verify: bool | str
     ticket_mcp_url: str
     splunk_data_mode: str
     splunk_rest_url: str
@@ -95,6 +97,8 @@ def get_environment_settings() -> Settings:
         ticket_mcp_host=os.getenv("TICKET_MCP_HOST", "127.0.0.1"),
         ticket_mcp_port=ticket_port,
         splunk_mcp_url=os.getenv("SPLUNK_MCP_URL", f"http://127.0.0.1:{splunk_port}/mcp"),
+        splunk_mcp_token=os.getenv("SPLUNK_MCP_TOKEN") or None,
+        splunk_mcp_verify=_tls_verify("SPLUNK_MCP"),
         ticket_mcp_url=os.getenv("TICKET_MCP_URL", f"http://127.0.0.1:{ticket_port}/mcp"),
         splunk_data_mode=splunk_data_mode,
         splunk_rest_url=os.getenv("SPLUNK_REST_URL", "https://127.0.0.1:8089").rstrip("/"),

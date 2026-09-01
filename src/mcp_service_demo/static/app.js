@@ -103,6 +103,16 @@ function renderSplunkSettings(settings) {
   const modeInput = $(`input[name="data-mode"][value="${mode}"]`);
   if (modeInput) modeInput.checked = true;
   $("#settings-source").textContent = settings.source || "Environment defaults";
+  $("#splunk-mcp-url").value = settings.mcp_url || "";
+  $("#splunk-mcp-token").value = "";
+  $("#splunk-mcp-token").placeholder = settings.mcp_token_configured
+    ? "Configured — leave blank to keep"
+    : "Optional bearer token";
+  $("#mcp-token-hint").textContent = settings.mcp_token_configured
+    ? "A bearer token is configured. Enter a value only to replace it."
+    : "Optional for the local Splunk Operations server.";
+  $("#splunk-mcp-verify").checked = settings.mcp_verify_ssl !== false;
+  $("#splunk-mcp-ca").value = settings.mcp_ca_bundle_path || "";
   $("#splunk-rest-url").value = settings.rest_url || "";
   $("#splunk-rest-token").value = "";
   $("#splunk-rest-token").placeholder = settings.rest_token_configured
@@ -137,6 +147,10 @@ function renderSplunkSettings(settings) {
 
 function splunkSettingsPayload() {
   return {
+    mcp_url: $("#splunk-mcp-url").value.trim(),
+    mcp_token: $("#splunk-mcp-token").value.trim(),
+    mcp_verify_ssl: $("#splunk-mcp-verify").checked,
+    mcp_ca_bundle_path: $("#splunk-mcp-ca").value.trim(),
     data_mode: $('input[name="data-mode"]:checked')?.value || "fixture",
     rest_url: $("#splunk-rest-url").value.trim(),
     rest_token: $("#splunk-rest-token").value.trim(),
@@ -165,6 +179,26 @@ async function openSplunkSettings() {
     renderSplunkSettings(await api("/api/settings/splunk"));
   } catch (error) {
     showConnectionResult(`Settings could not be loaded: ${error.message}`, true);
+  }
+}
+
+async function testMcpConnection() {
+  const button = $("#test-mcp-button");
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Testing…";
+  $("#connection-result").hidden = true;
+  try {
+    const result = await api("/api/settings/splunk/mcp/test", {
+      method: "POST",
+      body: JSON.stringify(splunkSettingsPayload()),
+    });
+    showConnectionResult(result.message, result.status !== "success");
+  } catch (error) {
+    showConnectionResult(`MCP endpoint test failed: ${error.message}`, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
   }
 }
 
@@ -470,6 +504,7 @@ function bindEvents() {
   $("#splunk-settings-dialog").addEventListener("click", (event) => {
     if (event.target === event.currentTarget) event.currentTarget.close();
   });
+  $("#test-mcp-button").addEventListener("click", testMcpConnection);
   $("#test-splunk-button").addEventListener("click", testSplunkConnection);
   $("#splunk-settings-form").addEventListener("submit", saveSplunkConnection);
   $("#reset-button").addEventListener("click", resetDemo);

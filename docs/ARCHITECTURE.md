@@ -41,13 +41,14 @@ rehearsals.
 ## Runtime connection settings
 
 Environment variables establish the default Splunk profile. The **Splunk setup** panel can save an
-encrypted override containing the data mode, management API connection, HEC connection, TLS
-verification, and optional CA bundle paths. Tokens are masked in API responses, and blank secret
-fields preserve the existing value.
+encrypted override containing the agent's Splunk MCP endpoint and bearer token, the data mode,
+management API connection, HEC connection, TLS verification, and optional CA bundle paths. Tokens
+are masked in API responses, and blank secret fields preserve the existing value.
 
-The web host and Splunk MCP server are separate processes, so both resolve the effective profile
-from the same encrypted file in the `data` directory. The MCP server does this when a tool is
-called; a saved profile therefore takes effect without restarting the processes.
+The agent resolves the MCP transport profile whenever it discovers or invokes a tool. The web host
+and local Splunk MCP server also resolve their effective platform profile from the same encrypted
+file in the `data` directory. A saved profile therefore takes effect without restarting the
+processes.
 
 ## Real versus synthetic
 

@@ -8,7 +8,7 @@
       content="A live demonstration of an agent using MCP to investigate Splunk telemetry and enrich a service ticket."
     />
     <title>MCP Service Demo</title>
-    <link rel="stylesheet" href="/static/styles.css?v=0.3.0" />
+    <link rel="stylesheet" href="/static/styles.css?v=0.3.1" />
   </head>
   <body>
     <div class="app-shell">
@@ -224,8 +224,8 @@
             <div class="settings-mark" aria-hidden="true">S</div>
             <div>
               <span class="workspace-kicker">Demo environment</span>
-              <h2 id="settings-title">Splunk connection</h2>
-              <p>Choose the telemetry source behind the Splunk Operations MCP server.</p>
+              <h2 id="settings-title">Splunk connections</h2>
+              <p>Configure the agent transport, search access, and scenario publisher.</p>
             </div>
             <button type="button" class="settings-close" id="settings-close" aria-label="Close settings">×</button>
           </header>
@@ -253,11 +253,48 @@
               </div>
             </section>
 
+            <section class="settings-section mcp-section">
+              <div class="settings-section-heading">
+                <div>
+                  <span class="settings-step">02 · MCP transport</span>
+                  <h3>Agent-to-tool connection</h3>
+                </div>
+                <span class="settings-role mcp">Streamable HTTP</span>
+              </div>
+              <p class="settings-help mcp-help">
+                The agent discovers and invokes Splunk tools through this MCP endpoint. The default points to the local Splunk Operations server started with this demo.
+              </p>
+
+              <div class="mcp-fields">
+                <div>
+                  <label class="field-label" for="splunk-mcp-url">MCP endpoint</label>
+                  <input class="settings-input" id="splunk-mcp-url" type="url" placeholder="https://mcp.example.com/mcp" required />
+                </div>
+                <div>
+                  <label class="field-label" for="splunk-mcp-token">Bearer token</label>
+                  <input class="settings-input" id="splunk-mcp-token" type="password" autocomplete="new-password" />
+                  <small class="field-hint" id="mcp-token-hint">Optional for the local Splunk Operations server.</small>
+                </div>
+              </div>
+
+              <div class="mcp-security-row">
+                <label class="check-row compact" for="splunk-mcp-verify">
+                  <input id="splunk-mcp-verify" type="checkbox" />
+                  <span><b>Verify TLS certificate</b><small>Recommended for remote MCP servers.</small></span>
+                </label>
+                <div>
+                  <label class="field-label" for="splunk-mcp-ca">Custom CA bundle <span>optional</span></label>
+                  <input class="settings-input" id="splunk-mcp-ca" type="text" placeholder="/path/to/customer-ca.pem" />
+                </div>
+                <button class="button secondary mcp-test" type="button" id="test-mcp-button">Test MCP endpoint</button>
+              </div>
+            </section>
+
             <div class="settings-columns">
               <section class="settings-section">
                 <div class="settings-section-heading">
                   <div>
-                    <span class="settings-step">02 · Search</span>
+                    <span class="settings-step">03 · Search</span>
                     <h3>Splunk search access</h3>
                   </div>
                   <span class="settings-role">Read only</span>
@@ -294,7 +331,7 @@
               <section class="settings-section">
                 <div class="settings-section-heading">
                   <div>
-                    <span class="settings-step">03 · Publish</span>
+                    <span class="settings-step">04 · Publish</span>
                     <h3>Scenario publisher</h3>
                   </div>
                   <span class="settings-role write">HEC write</span>
@@ -332,7 +369,7 @@
           <footer class="settings-footer">
             <p>Saved tokens are encrypted locally and never returned by the API.</p>
             <div>
-              <button class="button secondary" type="button" id="test-splunk-button">Test search connection</button>
+              <button class="button secondary" type="button" id="test-splunk-button">Test Splunk search</button>
               <button class="button primary" type="submit" id="save-splunk-button">Save connection</button>
             </div>
           </footer>
@@ -341,6 +378,6 @@
 
       <div class="toast-region" id="toast-region" aria-live="polite"></div>
     </div>
-    <script src="/static/app.js?v=0.3.0" defer></script>
+    <script src="/static/app.js?v=0.3.1" defer></script>
   </body>
 </html>

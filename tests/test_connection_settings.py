@@ -12,6 +12,8 @@ from mcp_service_demo.connection_settings import MASK, SplunkConnectionStore
 def base_settings(monkeypatch, tmp_path):
     monkeypatch.setenv("DEMO_DATABASE_PATH", str(tmp_path / "demo.db"))
     monkeypatch.setenv("SPLUNK_DATA_MODE", "fixture")
+    monkeypatch.setenv("SPLUNK_MCP_URL", "https://environment-mcp.example/mcp")
+    monkeypatch.setenv("SPLUNK_MCP_TOKEN", "environment-mcp-token")
     monkeypatch.setenv("SPLUNK_REST_URL", "https://environment.example:8089")
     monkeypatch.setenv("SPLUNK_REST_TOKEN", "environment-token")
     monkeypatch.setenv("SPLUNK_HEC_URL", "https://environment.example:8088")
@@ -26,6 +28,9 @@ def test_saved_connection_is_encrypted_masked_and_applied(monkeypatch, tmp_path)
     saved = connection_store.save(
         base,
         {
+            "mcp_url": "https://saved-mcp.example/mcp/",
+            "mcp_token": "saved-mcp-secret",
+            "mcp_verify_ssl": False,
             "data_mode": "live",
             "rest_url": "https://saved.example:8089/",
             "rest_token": "saved-rest-secret",
@@ -39,6 +44,9 @@ def test_saved_connection_is_encrypted_masked_and_applied(monkeypatch, tmp_path)
     )
     exported = connection_store.safe_export(base)
 
+    assert saved.splunk_mcp_url == "https://saved-mcp.example/mcp"
+    assert saved.splunk_mcp_token == "saved-mcp-secret"
+    assert saved.splunk_mcp_verify is False
     assert saved.splunk_data_mode == "live"
     assert saved.splunk_rest_url == "https://saved.example:8089"
     assert saved.splunk_rest_token == "saved-rest-secret"
@@ -49,6 +57,8 @@ def test_saved_connection_is_encrypted_masked_and_applied(monkeypatch, tmp_path)
     assert saved.splunk_hec_verify is False
     assert exported["rest_token"] == MASK
     assert exported["hec_token"] == MASK
+    assert exported["mcp_token"] == MASK
+    assert b"saved-mcp-secret" not in connection_store.config_path.read_bytes()
     assert b"saved-rest-secret" not in connection_store.config_path.read_bytes()
     assert b"saved-hec-secret" not in connection_store.config_path.read_bytes()
     if os.name != "nt":
@@ -56,6 +66,8 @@ def test_saved_connection_is_encrypted_masked_and_applied(monkeypatch, tmp_path)
         assert stat.S_IMODE(connection_store.key_path.stat().st_mode) == 0o600
 
     runtime = get_settings()
+    assert runtime.splunk_mcp_url == "https://saved-mcp.example/mcp"
+    assert runtime.splunk_mcp_token == "saved-mcp-secret"
     assert runtime.splunk_rest_token == "saved-rest-secret"
     assert runtime.splunk_hec_token == "saved-hec-secret"
 
@@ -65,14 +77,25 @@ def test_blank_secret_fields_preserve_existing_values(monkeypatch, tmp_path):
     connection_store = SplunkConnectionStore.for_settings(base)
     connection_store.save(
         base,
-        {"data_mode": "live", "rest_token": "first-token", "hec_token": "first-hec"},
+        {
+            "data_mode": "live",
+            "mcp_token": "first-mcp",
+            "rest_token": "first-token",
+            "hec_token": "first-hec",
+        },
     )
 
     updated = connection_store.save(
         base,
-        {"rest_token": "", "hec_token": "", "rest_url": "https://next.example:8089"},
+        {
+            "mcp_token": "",
+            "rest_token": "",
+            "hec_token": "",
+            "rest_url": "https://next.example:8089",
+        },
     )
 
+    assert updated.splunk_mcp_token == "first-mcp"
     assert updated.splunk_rest_token == "first-token"
     assert updated.splunk_hec_token == "first-hec"
     assert updated.splunk_rest_url == "https://next.example:8089"

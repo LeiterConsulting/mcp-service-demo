@@ -10,9 +10,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .agent import DemoAgent
-from .config import get_environment_settings, get_settings
+from .config import Settings, get_environment_settings, get_settings
 from .connection_settings import SplunkConnectionStore
-from .mcp_client import MCPBroker
+from .mcp_client import MCPBroker, MCPRemoteTarget
 from .scenario import seed_splunk_scenario
 from .splunk_backend import LiveSplunkBackend
 from .storage import DemoStore
@@ -20,7 +20,18 @@ from .storage import DemoStore
 settings = get_settings()
 store = DemoStore(settings.database_path)
 store.ensure_seeded()
-broker = MCPBroker({"splunk": settings.splunk_mcp_url, "tickets": settings.ticket_mcp_url})
+
+
+def _splunk_mcp_target(runtime_settings: Settings | None = None) -> MCPRemoteTarget:
+    resolved = runtime_settings or get_settings()
+    return MCPRemoteTarget(
+        url=resolved.splunk_mcp_url,
+        token=resolved.splunk_mcp_token,
+        verify=resolved.splunk_mcp_verify,
+    )
+
+
+broker = MCPBroker({"splunk": _splunk_mcp_target, "tickets": settings.ticket_mcp_url})
 agent = DemoAgent(settings, broker)
 
 app = FastAPI(
@@ -43,6 +54,10 @@ class InvestigateRequest(BaseModel):
 
 
 class SplunkConnectionUpdate(BaseModel):
+    mcp_url: str | None = None
+    mcp_token: str | None = None
+    mcp_verify_ssl: bool | None = None
+    mcp_ca_bundle_path: str | None = None
     data_mode: str | None = None
     rest_url: str | None = None
     rest_token: str | None = None
@@ -53,6 +68,7 @@ class SplunkConnectionUpdate(BaseModel):
     hec_token: str | None = None
     hec_verify_ssl: bool | None = None
     hec_ca_bundle_path: str | None = None
+    clear_mcp_token: bool = False
     clear_rest_token: bool = False
     clear_hec_token: bool = False
 
@@ -66,7 +82,7 @@ async def health() -> dict[str, Any]:
         "splunk_data_mode": runtime_settings.splunk_data_mode,
         "scenario": "checkout-degradation",
         "mcp_servers": {
-            "splunk": settings.splunk_mcp_url,
+            "splunk": runtime_settings.splunk_mcp_url,
             "tickets": settings.ticket_mcp_url,
         },
     }
@@ -88,7 +104,7 @@ async def update_splunk_settings(update: SplunkConnectionUpdate) -> dict[str, An
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
         "status": "success",
-        "message": "Splunk connection saved and available to the MCP server.",
+        "message": "Splunk connections saved and available to the agent and MCP server.",
         "settings": connection_store.safe_export(base),
     }
 
@@ -120,6 +136,41 @@ async def test_splunk_settings(update: SplunkConnectionUpdate) -> dict[str, Any]
         return {
             "status": "error",
             "message": str(exc),
+    }
+
+
+@app.post("/api/settings/splunk/mcp/test")
+async def test_splunk_mcp_settings(update: SplunkConnectionUpdate) -> dict[str, Any]:
+    base = get_environment_settings()
+    connection_store = SplunkConnectionStore.for_settings(base)
+    try:
+        candidate = connection_store.preview(base, update.model_dump(exclude_none=True))
+        tools = await MCPBroker({"splunk": _splunk_mcp_target(candidate)}).list_tools()
+        tls_policy = (
+            "verify certificates" if candidate.splunk_mcp_verify is not False else "do not verify"
+        )
+        return {
+            "status": "success",
+            "message": (
+                f"Connected to the MCP endpoint. {len(tools)} tools are available. "
+                f"TLS policy: {tls_policy}."
+            ),
+            "details": {
+                "endpoint": candidate.splunk_mcp_url,
+                "tls_verification": candidate.splunk_mcp_verify is not False,
+                "ca_bundle": (
+                    candidate.splunk_mcp_verify
+                    if isinstance(candidate.splunk_mcp_verify, str)
+                    else None
+                ),
+                "tool_count": len(tools),
+                "tools": [tool.name for tool in tools],
+            },
+        }
+    except Exception as exc:
+        return {
+            "status": "error",
+            "message": str(exc),
         }
 
 
@@ -133,13 +184,18 @@ async def splunk_status() -> dict[str, Any]:
 
 @app.get("/api/mcp/tools")
 async def mcp_tools() -> dict[str, Any]:
+    runtime_settings = get_settings()
     try:
         tools = await broker.list_tools()
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"MCP servers are not ready: {exc}") from exc
     return {
         "servers": [
-            {"name": "splunk", "title": "Splunk Operations", "url": settings.splunk_mcp_url},
+            {
+                "name": "splunk",
+                "title": "Splunk Operations",
+                "url": runtime_settings.splunk_mcp_url,
+            },
             {
                 "name": "tickets",
                 "title": "Northstar Service Desk",
