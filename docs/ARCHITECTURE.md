@@ -47,8 +47,10 @@ are masked in API responses, and blank secret fields preserve the existing value
 
 The agent resolves the MCP transport profile whenever it discovers or invokes a tool. The web host
 and local Splunk MCP server also resolve their effective platform profile from the same encrypted
-file in the `data` directory. A saved profile therefore takes effect without restarting the
-processes.
+file. Docker Compose stores that file and its encryption key in the dedicated `demo-settings`
+volume, separate from resettable scenario data in `demo-data`. Existing profiles from the older
+combined layout are copied into the settings volume automatically. A saved profile therefore takes
+effect without restarting the processes and survives **Reset demo**.
 
 ## Real versus synthetic
 

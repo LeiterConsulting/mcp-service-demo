@@ -37,7 +37,7 @@
           <button class="button ghost small" id="settings-button" title="Configure the Splunk connection">
             <span aria-hidden="true">⚙</span> Splunk setup
           </button>
-          <button class="button ghost small" id="reset-button" title="Restore the original scenario">
+          <button class="button ghost small" id="reset-button" title="Restore scenario and ticket data; Splunk Setup is preserved">
             Reset demo
           </button>
         </div>
@@ -336,7 +336,7 @@
                   </div>
                   <span class="settings-role write">HEC write</span>
                 </div>
-                <p class="settings-help">Reset demo publishes a fresh checkout incident with a unique run ID.</p>
+                <p class="settings-help">Reset demo publishes a fresh checkout incident with a unique run ID. Saved Splunk connections and credentials are preserved.</p>
 
                 <label class="field-label" for="splunk-hec-url">HTTP Event Collector URL</label>
                 <input class="settings-input" id="splunk-hec-url" type="url" placeholder="https://splunk.example.com:8088" />

@@ -113,6 +113,8 @@ mcp-service-demo run
 run exists. `seed-splunk` resets the local tickets, publishes a new event stream, and waits through
 the MCP search connection until the run is searchable.
 Once the application is running, **Reset demo** repeats that coordinated reset and publication.
+It restores only scenario and ticket state; the saved Splunk profile, credentials, and TLS choices
+are preserved. Docker Compose keeps that encrypted profile in the separate `demo-settings` volume.
 
 Open [http://127.0.0.1:8100](http://127.0.0.1:8100). The header will say **Splunk live**, and the
 briefing will identify a real Splunk endpoint as the telemetry source.

@@ -32,33 +32,50 @@ _SECRET_FIELDS = {"mcp_token", "rest_token", "hec_token"}
 class SplunkConnectionStore:
     """Encrypted, process-shared overrides for the demo's active Splunk connection."""
 
-    def __init__(self, config_path: Path, key_path: Path):
+    def __init__(
+        self,
+        config_path: Path,
+        key_path: Path,
+        *,
+        legacy_config_path: Path | None = None,
+        legacy_key_path: Path | None = None,
+    ):
         self.config_path = config_path
         self.key_path = key_path
+        self.legacy_config_path = legacy_config_path
+        self.legacy_key_path = legacy_key_path
 
     @classmethod
     def for_settings(cls, settings: Settings) -> SplunkConnectionStore:
         data_directory = settings.database_path.parent
+        legacy_config_path = data_directory / "splunk-connection.enc"
+        legacy_key_path = data_directory / ".splunk-connection.key"
+        config_path = Path(
+            os.getenv(
+                "DEMO_SPLUNK_CONFIG_PATH",
+                legacy_config_path,
+            )
+        )
+        key_path = Path(
+            os.getenv(
+                "DEMO_SPLUNK_CONFIG_KEY_PATH",
+                legacy_key_path,
+            )
+        )
         return cls(
-            Path(
-                os.getenv(
-                    "DEMO_SPLUNK_CONFIG_PATH",
-                    data_directory / "splunk-connection.enc",
-                )
-            ),
-            Path(
-                os.getenv(
-                    "DEMO_SPLUNK_CONFIG_KEY_PATH",
-                    data_directory / ".splunk-connection.key",
-                )
-            ),
+            config_path,
+            key_path,
+            legacy_config_path=(legacy_config_path if config_path != legacy_config_path else None),
+            legacy_key_path=(legacy_key_path if key_path != legacy_key_path else None),
         )
 
     @property
     def configured(self) -> bool:
+        self._migrate_legacy_profile()
         return self.config_path.is_file()
 
     def load(self) -> dict[str, Any]:
+        self._migrate_legacy_profile()
         if not self.config_path.is_file():
             return {}
         if not self.key_path.is_file():
@@ -87,9 +104,7 @@ class SplunkConnectionStore:
         )
         data_mode = _data_mode(saved.get("data_mode", base.splunk_data_mode))
         rest_url = _url(saved.get("rest_url", base.splunk_rest_url), "Splunk API URL")
-        rest_scheme = _token_scheme(
-            saved.get("rest_token_scheme", base.splunk_rest_token_scheme)
-        )
+        rest_scheme = _token_scheme(saved.get("rest_token_scheme", base.splunk_rest_token_scheme))
         rest_verify = _verify_value(
             saved.get("rest_verify_ssl", base.splunk_rest_verify is not False),
             saved.get("rest_ca_bundle_path"),
@@ -202,6 +217,44 @@ class SplunkConnectionStore:
         _secure_file(temporary_path)
         temporary_path.replace(self.config_path)
         _secure_file(self.config_path)
+
+    def _migrate_legacy_profile(self) -> None:
+        """Copy an existing profile when credentials move to their own volume."""
+        legacy_config = self.legacy_config_path
+        legacy_key = self.legacy_key_path
+        if (
+            self.config_path.is_file()
+            or self.key_path.is_file()
+            or legacy_config is None
+            or legacy_key is None
+            or not legacy_config.is_file()
+            or not legacy_key.is_file()
+        ):
+            return
+
+        key = legacy_key.read_bytes()
+        encrypted = legacy_config.read_bytes()
+        try:
+            Fernet(key).decrypt(encrypted)
+        except (InvalidToken, ValueError) as exc:
+            raise RuntimeError("Legacy Splunk settings could not be decrypted") from exc
+
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        self.key_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_key = self.key_path.with_name(f"{self.key_path.name}.{os.getpid()}.tmp")
+        temporary_config = self.config_path.with_name(f"{self.config_path.name}.{os.getpid()}.tmp")
+        try:
+            temporary_key.write_bytes(key)
+            temporary_config.write_bytes(encrypted)
+            _secure_file(temporary_key)
+            _secure_file(temporary_config)
+            temporary_key.replace(self.key_path)
+            temporary_config.replace(self.config_path)
+            _secure_file(self.key_path)
+            _secure_file(self.config_path)
+        finally:
+            temporary_key.unlink(missing_ok=True)
+            temporary_config.unlink(missing_ok=True)
 
 
 def _secret(saved: Mapping[str, Any], name: str, fallback: str | None) -> str | None:

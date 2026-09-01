@@ -68,3 +68,6 @@ Use **Reset demo** in the header, or run:
 ```bash
 mcp-service-demo reset
 ```
+
+Reset restores the ticket queue and publishes a fresh scenario. It does not change **Splunk setup**
+or remove saved MCP, HEC, REST, or TLS settings.

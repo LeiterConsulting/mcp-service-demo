@@ -481,7 +481,7 @@ async function resetDemo() {
     await refreshTickets("INC-1042");
     renderChat();
     renderConnectionStatus();
-    toast("Demo scenario restored");
+    toast("Demo scenario restored · Splunk Setup preserved");
   } catch (error) {
     toast(error.message, true);
   } finally {

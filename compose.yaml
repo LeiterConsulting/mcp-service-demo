@@ -30,8 +30,12 @@ services:
       SPLUNK_HEC_BATCH_SIZE: ${SPLUNK_HEC_BATCH_SIZE:-200}
       SPLUNK_REST_CA_BUNDLE: ${SPLUNK_REST_CA_BUNDLE:-}
       SPLUNK_HEC_CA_BUNDLE: ${SPLUNK_HEC_CA_BUNDLE:-}
+      DEMO_SPLUNK_CONFIG_PATH: /app/config/splunk-connection.enc
+      DEMO_SPLUNK_CONFIG_KEY_PATH: /app/config/.splunk-connection.key
     volumes:
       - demo-data:/app/data
+      - demo-settings:/app/config
 
 volumes:
   demo-data:
+  demo-settings:

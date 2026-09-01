@@ -141,7 +141,7 @@ async def test_splunk_settings(update: SplunkConnectionUpdate) -> dict[str, Any]
         return {
             "status": "error",
             "message": str(exc),
-    }
+        }
 
 
 @app.post("/api/settings/splunk/mcp/test")
@@ -260,8 +260,10 @@ async def reset_demo() -> dict[str, Any]:
     try:
         runtime_settings = get_settings()
         if runtime_settings.splunk_data_mode == "live":
-            return await seed_splunk_scenario_via_mcp(runtime_settings, broker, store)
-        return store.reset()
+            result = await seed_splunk_scenario_via_mcp(runtime_settings, broker, store)
+        else:
+            result = store.reset()
+        return {**result, "splunk_settings_preserved": True}
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Unable to reset the demo: {exc}") from exc
 

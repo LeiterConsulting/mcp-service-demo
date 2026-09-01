@@ -7,6 +7,7 @@ import pytest
 
 from mcp_service_demo.config import get_environment_settings, get_settings
 from mcp_service_demo.connection_settings import MASK, SplunkConnectionStore
+from mcp_service_demo.storage import DemoStore
 
 
 def base_settings(monkeypatch, tmp_path):
@@ -109,3 +110,53 @@ def test_invalid_connection_url_is_rejected_before_write(monkeypatch, tmp_path):
         connection_store.save(base, {"rest_url": "splunk.example:8089"})
 
     assert not connection_store.config_path.exists()
+
+
+def test_demo_reset_preserves_saved_splunk_profile(monkeypatch, tmp_path):
+    base = base_settings(monkeypatch, tmp_path)
+    connection_store = SplunkConnectionStore.for_settings(base)
+    connection_store.save(
+        base,
+        {
+            "data_mode": "live",
+            "mcp_token": "saved-mcp-secret",
+            "hec_token": "saved-hec-secret",
+        },
+    )
+    encrypted_before = connection_store.config_path.read_bytes()
+    key_before = connection_store.key_path.read_bytes()
+
+    DemoStore(base.database_path).reset()
+
+    assert connection_store.config_path.read_bytes() == encrypted_before
+    assert connection_store.key_path.read_bytes() == key_before
+    assert connection_store.apply(base).splunk_mcp_token == "saved-mcp-secret"
+    assert connection_store.apply(base).splunk_hec_token == "saved-hec-secret"
+
+
+def test_legacy_profile_migrates_to_dedicated_settings_directory(monkeypatch, tmp_path):
+    base = base_settings(monkeypatch, tmp_path)
+    legacy_store = SplunkConnectionStore.for_settings(base)
+    legacy_store.save(
+        base,
+        {
+            "data_mode": "live",
+            "mcp_token": "saved-mcp-secret",
+            "hec_token": "saved-hec-secret",
+        },
+    )
+
+    config_directory = tmp_path / "config"
+    monkeypatch.setenv("DEMO_SPLUNK_CONFIG_PATH", str(config_directory / "splunk-connection.enc"))
+    monkeypatch.setenv(
+        "DEMO_SPLUNK_CONFIG_KEY_PATH", str(config_directory / ".splunk-connection.key")
+    )
+    migrated_store = SplunkConnectionStore.for_settings(base)
+    effective = migrated_store.apply(base)
+
+    assert effective.splunk_mcp_token == "saved-mcp-secret"
+    assert effective.splunk_hec_token == "saved-hec-secret"
+    assert migrated_store.config_path.is_file()
+    assert migrated_store.key_path.is_file()
+    assert legacy_store.config_path.is_file()
+    assert legacy_store.key_path.is_file()
