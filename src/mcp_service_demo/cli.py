@@ -17,6 +17,7 @@ import uvicorn
 from .config import Settings, get_settings
 from .mcp_client import MCPBroker, MCPRemoteTarget
 from .scenario import seed_splunk_scenario, seed_splunk_scenario_via_mcp
+from .servers.catalog import run_catalog_server
 from .servers.splunk import run_splunk_server
 from .servers.tickets import run_ticket_server
 from .splunk_backend import create_splunk_backend
@@ -57,6 +58,7 @@ def run_all() -> None:
     processes = [
         _process(run_splunk_server, "splunk-mcp"),
         _process(run_ticket_server, "ticket-mcp"),
+        _process(run_catalog_server, "catalog-mcp"),
         _process(_run_web, "demo-web"),
     ]
     shutdown_requested = False
@@ -75,11 +77,13 @@ def run_all() -> None:
     try:
         _wait_for_port(settings.splunk_mcp_host, settings.splunk_mcp_port)
         _wait_for_port(settings.ticket_mcp_host, settings.ticket_mcp_port)
+        _wait_for_port(settings.catalog_mcp_host, settings.catalog_mcp_port)
         _wait_for_port(settings.web_host, settings.web_port)
         print("\nMCP Service Demo is ready")
         print(f"  Demo:       http://{settings.web_host}:{settings.web_port}")
         print(f"  Splunk MCP: {settings.splunk_mcp_url}")
         print(f"  Ticket MCP: {settings.ticket_mcp_url}")
+        print(f"  Catalog MCP: {settings.catalog_mcp_url}")
         print(f"  Splunk data: {settings.splunk_data_mode}")
         print(f"  Agent mode: {settings.agent_mode}\n")
         while all(process.is_alive() for process in processes):
@@ -94,10 +98,11 @@ def run_all() -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the MCP Service Demo")
     subparsers = parser.add_subparsers(dest="command")
-    subparsers.add_parser("run", help="start the web app and both MCP servers")
+    subparsers.add_parser("run", help="start the web app and all MCP servers")
     subparsers.add_parser("web", help="start only the web app")
     subparsers.add_parser("splunk-mcp", help="start only the Splunk MCP server")
     subparsers.add_parser("ticket-mcp", help="start only the ticket MCP server")
+    subparsers.add_parser("catalog-mcp", help="start only the service catalog MCP server")
     subparsers.add_parser("reset", help="restore the seeded demo scenario")
     subparsers.add_parser("test-splunk", help="test the configured Splunk REST connection")
     subparsers.add_parser("seed-splunk", help="publish a fresh scenario to Splunk through HEC")
@@ -165,6 +170,8 @@ def main() -> None:
         run_splunk_server()
     elif command == "ticket-mcp":
         run_ticket_server()
+    elif command == "catalog-mcp":
+        run_catalog_server()
     elif command == "reset":
         settings = get_settings()
         store = DemoStore(settings.database_path)

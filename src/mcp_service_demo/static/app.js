@@ -10,7 +10,7 @@ const state = {
   chat: [
     {
       role: "agent",
-      text: "I can investigate the configured Splunk environment and work with the service desk through live MCP tools. Try asking whether **checkout-api** is healthy, or ask me to investigate **INC-1042**.",
+      text: "I can preserve context across the service desk, service catalog, and Splunk through live MCP tools. Try asking why **checkout-api** is failing, or ask me to investigate **INC-1042**.",
       mode: "ready",
     },
   ],
@@ -91,7 +91,7 @@ function renderConnectionStatus() {
   pill.classList.remove("online", "offline");
   pill.classList.add(presentationReady ? "online" : "offline");
   pill.querySelector("span:last-child").textContent = presentationReady
-    ? `2 MCP servers · Splunk ${live ? "live" : "fixture"}`
+    ? `3 MCP servers · Splunk ${live ? "live" : "fixture"}`
     : splunkReady && !scenarioFresh
       ? "Reset demo to refresh Splunk data"
       : live
@@ -480,9 +480,18 @@ function noteLabel(kind) {
 function renderTicket() {
   const ticket = state.activeTicket;
   if (!ticket) return;
+  const outcomes = state.investigation?.outcomes;
+  const outcomeStrip = outcomes
+    ? `<div class="outcome-strip" aria-label="Investigation outcomes">
+        <div><b>${escapeHtml(outcomes.elapsed_seconds ?? "—")}s</b><span>time to evidence</span></div>
+        <div><b>${escapeHtml(outcomes.systems_coordinated)}</b><span>systems coordinated</span></div>
+        <div><b>${escapeHtml(outcomes.evidence_refs_preserved)}</b><span>sources preserved</span></div>
+        <div><b>${escapeHtml(outcomes.manual_rekeying)}</b><span>manual re-keying</span></div>
+      </div>`
+    : "";
   const investigation = state.investigation
     ? `<div class="investigation-summary">
-        <b>✦ Splunk investigation complete</b>
+        <b>✦ Cross-system investigation complete</b>
         <p>${richText(state.investigation.message)}</p>
         <div class="investigation-steps">${state.investigation.timeline.map((item) => `<span>✓ ${escapeHtml(item.title)}</span>`).join("")}</div>
       </div>`
@@ -510,6 +519,7 @@ function renderTicket() {
         <button class="button primary ask-splunk" id="ask-splunk-button">Ask Splunk</button>
       </div>
     </div>
+    ${outcomeStrip}
     ${investigation}
     <div class="ticket-hero">
       <div class="ticket-id-row">
@@ -534,8 +544,8 @@ function renderTicket() {
       <aside>
         <div class="agent-callout">
           <span class="workspace-kicker">MCP-powered action</span>
-          <h4>Investigate without leaving the ticket</h4>
-          <p>The agent will use this ticket as context, query Splunk through MCP, and add a sourced work note.</p>
+          <h4>Resolve context without leaving the ticket</h4>
+          <p>The agent will identify ownership and dependencies, query Splunk, verify the likely fault domain, and add a sourced work note.</p>
           <button class="button" id="ask-splunk-side">Ask Splunk about this ticket</button>
         </div>
         <div class="context-card">
@@ -574,7 +584,7 @@ async function askSplunk() {
     await refreshTickets(result.ticket_id);
     state.investigation = result;
     renderTicket();
-    toast(`${result.ticket_id} enriched with Splunk evidence`);
+    toast(`${result.ticket_id} enriched across ${result.outcomes.systems_coordinated} systems`);
   } catch (error) {
     toast(error.message, true);
     renderTicket();

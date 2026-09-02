@@ -27,7 +27,8 @@ Suggested framing:
 
 > An agent can already reason and write. MCP gives it a standard way to discover what a system can do, provide typed arguments, invoke an operation, and receive structured results. The systems keep owning their data and actions; the agent becomes the coordinator.
 
-Point out the live tool count. The catalog is discovered from the two running MCP servers rather than duplicated in the UI.
+Point out the live tool count and three independent servers. The agent discovers those capabilities
+at runtime rather than duplicating each system's integration logic in the UI.
 
 If using live mode, also point out **Real Splunk endpoint** in the briefing and **Splunk live** in
 the header. Those labels are populated from runtime status rather than presenter copy.
@@ -38,9 +39,12 @@ Open **Agent** and choose **Find the cause**.
 
 Call attention to the MCP timeline as the answer is built:
 
-1. `splunk.get_service_health` calculates error rate and p95 latency.
-2. `splunk.search_logs` finds the repeated connection-pool failure.
-3. The answer summarizes the structured tool results; in live mode, those results come from SPL
+1. `catalog.get_service_context` resolves ownership, dependencies, and the first-response runbook.
+2. `splunk.get_service_health` calculates error rate and p95 latency.
+3. `splunk.search_logs` finds the repeated connection-pool failure.
+4. A second health check verifies that the implicated inventory service is healthy, narrowing the
+   fault to the checkout client path before another team is escalated.
+5. The answer summarizes the structured tool results; in live mode, those results come from SPL
    executed through Splunk's REST API.
 
 Optional follow-up: choose **Show my queue** to demonstrate that the same host discovers tools from another MCP server.
@@ -54,21 +58,29 @@ Explain that the ticket contains only the customer's symptoms and business conte
 The authorized workflow:
 
 1. reads the ticket through the service-desk MCP server;
-2. calculates current Splunk health and compares it to a baseline;
-3. searches correlated errors and follows a failed trace;
-4. writes a sourced internal work note through the service-desk MCP server;
-5. moves the incident to **Investigating**.
+2. resolves the service owner, dependencies, escalation path, and runbook through the catalog;
+3. calculates current Splunk health and compares it to a baseline;
+4. searches correlated errors, follows a failed trace, and verifies the implicated dependency;
+5. writes a sourced internal work note through the service-desk MCP server;
+6. moves the incident to **Investigating**.
 
-End on the new work note and its evidence references.
+End on the outcome strip and new work note. The strip makes four employee outcomes explicit:
+
+- three systems coordinated without switching interfaces;
+- two context transfers completed without copy/paste;
+- evidence references preserved in the system of record;
+- the implicated inventory team reaches innocence before an unnecessary escalation.
 
 ## 4. Connect it to the customer's environment
 
 Suggested close:
 
 > The incident content and service-desk brand are fictional, but the operations you saw are real:
-> HEC ingestion, Splunk searches, MCP calls, and a persistent ticket update. In the customer's
-> environment, the same tool contracts can wrap their approved Splunk searches and ServiceNow
-> operations without changing the agent experience.
+> HEC ingestion, Splunk searches, MCP calls, catalog lookups, and a persistent ticket update. The
+> value is not another chat window: it is less re-keying, fewer handoff errors, faster completion,
+> and faster proof of where the problem is—and is not. In the customer's environment, the same
+> tool contracts can wrap their approved Splunk searches, service catalog, and ServiceNow
+> operations without changing the employee experience.
 
 ## Reset between demonstrations
 

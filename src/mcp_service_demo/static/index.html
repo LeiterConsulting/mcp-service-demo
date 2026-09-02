@@ -8,7 +8,7 @@
       content="A live demonstration of an agent using MCP to investigate Splunk telemetry and enrich a service ticket."
     />
     <title>MCP Service Demo</title>
-    <link rel="stylesheet" href="/static/styles.css?v=0.5.0" />
+    <link rel="stylesheet" href="/static/styles.css?v=0.6.0" />
   </head>
   <body>
     <div class="app-shell">
@@ -52,10 +52,10 @@
             <div class="hero-grid">
               <div class="hero-copy">
                 <div class="eyebrow" id="data-source-label"><span></span> Live protocol · Fixture telemetry</div>
-                <h1 id="briefing-title">One agent. Two systems.<br /><em>A shared protocol.</em></h1>
+                <h1 id="briefing-title">One agent. Three systems.<br /><em>Less work between them.</em></h1>
                 <p class="hero-lede">
-                  MCP gives an AI agent a consistent way to discover tools, read operational context,
-                  and take authorized action—without building a bespoke integration for every conversation.
+                  MCP lets an agent carry trusted context between the systems employees already use—reducing
+                  re-keying, shortening investigations, and helping teams prove where a problem is not.
                 </p>
                 <div class="hero-actions">
                   <button class="button primary" data-view="agent">Try the agent <span>→</span></button>
@@ -63,7 +63,7 @@
                 </div>
                 <div class="hero-proof">
                   <span><b id="hero-tool-count">—</b> live MCP tools</span>
-                  <span><b>2</b> independent servers</span>
+                  <span><b>3</b> independent servers</span>
                   <span><b>1</b> visible workflow</span>
                 </div>
               </div>
@@ -107,9 +107,25 @@
                     </div>
                     <span class="live-badge">Live</span>
                   </article>
+                  <article class="system-card catalog-system">
+                    <div class="system-icon catalog-icon">C</div>
+                    <div>
+                      <span class="system-kicker">Read only</span>
+                      <strong>Service Catalog</strong>
+                      <small>Owners · dependencies · runbooks</small>
+                    </div>
+                    <span class="live-badge">Live</span>
+                  </article>
                 </div>
               </div>
             </div>
+
+            <section class="value-proof" aria-label="Employee outcomes">
+              <article><span>Reduce errors</span><b>No copy-and-paste evidence</b><small>Typed results move between systems without manual re-keying.</small></article>
+              <article><span>Reduce time</span><b>One investigation path</b><small>Ownership, telemetry, and ticket updates happen in the employee's workflow.</small></article>
+              <article><span>Time to innocence</span><b>Verify before escalating</b><small>Dependency health narrows the fault domain before another team is paged.</small></article>
+              <article><span>Finish the work</span><b>Write back with provenance</b><small>The finding and its evidence land in the system of record.</small></article>
+            </section>
 
             <div class="briefing-lower">
               <article class="story-panel">
@@ -125,11 +141,16 @@
                   <div class="story-arrow">→</div>
                   <div class="story-step">
                     <span>02</span>
-                    <div><b>Ask Splunk</b><small>It calculates health, finds errors, and follows a failed trace.</small></div>
+                    <div><b>Resolve context</b><small>The catalog supplies ownership, dependencies, and the runbook.</small></div>
                   </div>
                   <div class="story-arrow">→</div>
                   <div class="story-step">
                     <span>03</span>
+                    <div><b>Prove the fault domain</b><small>Splunk finds the failure and verifies the implicated dependency.</small></div>
+                  </div>
+                  <div class="story-arrow">→</div>
+                  <div class="story-step">
+                    <span>04</span>
                     <div><b>Enrich the record</b><small>A sourced work note is written through the ticket MCP server.</small></div>
                   </div>
                 </div>
@@ -187,7 +208,7 @@
               <div class="timeline-empty" id="timeline-empty">
                 <div class="empty-orbit"><span></span><span></span><span></span></div>
                 <b>Tool calls will appear here</b>
-                <p>Choose a prompt to watch the agent discover context across both systems.</p>
+                <p>Choose a prompt to watch the agent preserve context across three systems.</p>
               </div>
               <div class="tool-timeline" id="tool-timeline"></div>
             </aside>
@@ -476,6 +497,6 @@
 
       <div class="toast-region" id="toast-region" aria-live="polite"></div>
     </div>
-    <script src="/static/app.js?v=0.5.0" defer></script>
+    <script src="/static/app.js?v=0.6.0" defer></script>
   </body>
 </html>

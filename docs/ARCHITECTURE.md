@@ -1,6 +1,6 @@
 # Architecture
 
-The agent always talks to two independent MCP servers. Only the telemetry adapter changes between
+The agent coordinates three independent MCP servers. Only the telemetry adapter changes between
 fixture and live modes.
 
 ```text
@@ -15,18 +15,27 @@ Agent host :8100
    │                                                   ▲
    │                                            scenario data
    │                                                   │ HEC
-   └── Streamable HTTP MCP ──► Northstar Desk :8102    │
-                                      │                 │
-                                      ▼                 │
-                              ticket SQLite store ──► scenario loader
+   ├── Streamable HTTP MCP ──► Northstar Desk :8102    │
+   │                                  │                 │
+   │                                  ▼                 │
+   │                          ticket SQLite store ──► scenario loader
+   └── Streamable HTTP MCP ──► Service Catalog :8103
+                                      │
+                                      └── owners · dependencies · runbooks
 ```
 
-## Why two MCP servers
+## Why three MCP servers
 
 The story is more useful when MCP is visibly a protocol between an agent host and independent
-systems. Splunk tools are read-only. Ticket tools include reads and explicitly gated writes. The
-agent joins context at runtime: it reads the service named by a ticket, investigates that service
-in Splunk, then sends its sourced result back to the ticket system.
+systems. Splunk tools are read-only. Catalog tools provide authoritative operational context.
+Ticket tools include reads and explicitly gated writes. The agent joins context at runtime: it
+reads the service named by a ticket, resolves its owner and dependencies, investigates it in
+Splunk, verifies the health of an implicated dependency, then sends its sourced result back to the
+ticket system.
+
+That extra verification demonstrates **time to innocence**. A trace may cross `inventory-api`, but
+healthy service-level telemetry prevents a premature escalation to the inventory team and narrows
+the likely fault to the checkout client's connection pool.
 
 ## Deterministic live data
 
@@ -76,12 +85,14 @@ Real during a live-mode demo:
 - MCP discovery, Streamable HTTP transport, typed arguments, and tool results;
 - Splunk HEC ingestion and REST searches using deterministic SPL;
 - SQLite ticket reads, work-note writes, and status changes through the ticket MCP server;
+- service ownership, dependency, and runbook reads through the catalog MCP server;
 - optional model-driven tool selection.
 
 Synthetic by design:
 
 - the company, users, services, tickets, and incident event content;
 - the Northstar service-desk visual design;
+- the Northstar service catalog records;
 - the `splunk://` evidence references, which are portable references rather than clickable Splunk
   deep links.
 
@@ -91,6 +102,7 @@ Synthetic by design:
 - `scenario.py` handles HEC publication and coordinated resets.
 - `servers/tickets.py` is the seam for a future ServiceNow, Jira Service Management, Zammad, or
   other ticket adapter.
+- `servers/catalog.py` is the seam for a future CMDB, service catalog, or ownership registry.
 
 The agent workflow and browser do not need to change when another implementation is placed behind
-either MCP server.
+any MCP server.

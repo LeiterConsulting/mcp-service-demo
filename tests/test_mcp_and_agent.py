@@ -5,16 +5,17 @@ from types import SimpleNamespace
 
 import mcp_service_demo.agent as agent_module
 import mcp_service_demo.mcp_client as mcp_client_module
-from mcp_service_demo.agent import DemoAgent
+from mcp_service_demo.agent import DemoAgent, ToolEvent
 from mcp_service_demo.config import get_settings
 from mcp_service_demo.mcp_client import MCPBroker, MCPRemoteTarget, MCPTool
+from mcp_service_demo.servers.catalog import catalog_mcp
 from mcp_service_demo.servers.splunk import splunk_mcp
 from mcp_service_demo.servers.tickets import ticket_mcp
 from mcp_service_demo.splunk_mcp_adapter import SplunkMCPAdapter
 from mcp_service_demo.storage import DemoStore
 
 
-async def test_broker_discovers_and_calls_both_mcp_servers(tmp_path, monkeypatch):
+async def test_broker_discovers_and_calls_all_mcp_servers(tmp_path, monkeypatch):
     monkeypatch.setenv("DEMO_DATABASE_PATH", str(tmp_path / "demo.db"))
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     DemoStore(tmp_path / "demo.db").reset()
@@ -25,18 +26,24 @@ async def test_broker_discovers_and_calls_both_mcp_servers(tmp_path, monkeypatch
         resolved += 1
         return splunk_mcp
 
-    broker = MCPBroker({"splunk": current_splunk_target, "tickets": ticket_mcp})
+    broker = MCPBroker(
+        {"splunk": current_splunk_target, "tickets": ticket_mcp, "catalog": catalog_mcp}
+    )
 
     tools = await broker.list_tools()
     health = await broker.call(
         "splunk", "get_service_health", {"service": "checkout-api", "minutes": 30}
     )
     ticket = await broker.call("tickets", "get_ticket", {"ticket_id": "INC-1042"})
+    context = await broker.call(
+        "catalog", "get_service_context", {"service": "checkout-api"}
+    )
 
-    assert len(tools) == 10
-    assert {tool.server for tool in tools} == {"splunk", "tickets"}
+    assert len(tools) == 11
+    assert {tool.server for tool in tools} == {"splunk", "tickets", "catalog"}
     assert health["state"] == "degraded"
     assert ticket["service"] == "checkout-api"
+    assert context["owner_team"] == "Digital Commerce"
     assert resolved == 2
 
 
@@ -46,7 +53,7 @@ async def test_ticket_investigation_completes_the_cross_system_loop(tmp_path, mo
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     store = DemoStore(database_path)
     store.reset()
-    broker = MCPBroker({"splunk": splunk_mcp, "tickets": ticket_mcp})
+    broker = MCPBroker({"splunk": splunk_mcp, "tickets": ticket_mcp, "catalog": catalog_mcp})
     agent = DemoAgent(get_settings(), broker)
 
     result = await agent.investigate_ticket("INC-1042", write_back=True)
@@ -55,16 +62,31 @@ async def test_ticket_investigation_completes_the_cross_system_loop(tmp_path, mo
     assert result.ticket_updated is True
     assert [event.tool for event in result.timeline] == [
         "get_ticket",
+        "get_service_context",
         "get_service_health",
         "compare_service_baseline",
         "search_logs",
         "trace_request",
+        "get_service_health",
         "add_work_note",
     ]
     assert updated is not None
     assert updated["status"] == "Investigating"
     assert updated["notes"][-1]["author"] == "Splunk Investigation Agent"
     assert "connection pool" in updated["notes"][-1]["body"]
+    assert "inventory-api is healthy" in updated["notes"][-1]["body"]
+    assert "catalog://services/checkout-api" in updated["notes"][-1]["evidence_refs"]
+
+    outcomes = result.to_dict(elapsed_ms=12_345)["outcomes"]
+    assert outcomes == {
+        "elapsed_seconds": 12.3,
+        "systems_coordinated": 3,
+        "systems": ["tickets", "catalog", "splunk"],
+        "mcp_calls": 8,
+        "context_transfers_automated": 2,
+        "evidence_refs_preserved": 5,
+        "manual_rekeying": 0,
+    }
 
 
 async def test_guided_agent_uses_real_splunk_query_tool_when_available(tmp_path, monkeypatch):
@@ -73,11 +95,11 @@ async def test_guided_agent_uses_real_splunk_query_tool_when_available(tmp_path,
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     store = DemoStore(database_path)
     store.reset()
-    ticket_broker = MCPBroker({"tickets": ticket_mcp})
+    context_broker = MCPBroker({"tickets": ticket_mcp, "catalog": catalog_mcp})
 
     class QueryToolBroker:
         async def list_tools(self):
-            ticket_tools = await ticket_broker.list_tools()
+            context_tools = await context_broker.list_tools()
             return [
                 MCPTool(
                     server="splunk",
@@ -86,15 +108,36 @@ async def test_guided_agent_uses_real_splunk_query_tool_when_available(tmp_path,
                     description="Run SPL in Splunk",
                     input_schema={"type": "object"},
                 ),
-                *ticket_tools,
+                *context_tools,
             ]
 
         async def call(self, server, tool, arguments):
-            if server == "tickets":
-                return await ticket_broker.call(server, tool, arguments)
+            if server in {"tickets", "catalog"}:
+                return await context_broker.call(server, tool, arguments)
             assert tool == "splunk_run_query"
             query = arguments["query"]
-            if 'row_kind="metric"' in query:
+            if 'service="inventory-api"' in query:
+                rows = [
+                    {
+                        "row_kind": "metric",
+                        "period": "current",
+                        "requests": "100",
+                        "errors": "0",
+                        "error_rate_pct": "0.0",
+                        "p50_ms": "70",
+                        "p95_ms": "180",
+                    },
+                    {
+                        "row_kind": "metric",
+                        "period": "baseline",
+                        "requests": "100",
+                        "errors": "0",
+                        "error_rate_pct": "0.0",
+                        "p50_ms": "68",
+                        "p95_ms": "175",
+                    },
+                ]
+            elif 'row_kind="metric"' in query:
                 rows = [
                     {
                         "row_kind": "metric",
@@ -179,12 +222,13 @@ async def test_guided_agent_uses_real_splunk_query_tool_when_available(tmp_path,
     updated = store.get_ticket("INC-1042")
 
     splunk_events = [event for event in result.timeline if event.server == "splunk"]
-    assert [event.tool for event in splunk_events] == ["splunk_run_query"] * 4
+    assert [event.tool for event in splunk_events] == ["splunk_run_query"] * 5
     assert all(event.arguments["app"] == "mcp_service_demo" for event in splunk_events)
     assert result.ticket_updated is True
     assert updated is not None
     assert "18.0%" in updated["notes"][-1]["body"]
     assert "connection pool" in updated["notes"][-1]["body"]
+    assert "inventory-api is healthy" in updated["notes"][-1]["body"]
 
 
 async def test_live_splunk_status_distinguishes_searchable_from_fresh(tmp_path, monkeypatch):
@@ -241,6 +285,13 @@ def test_llm_tool_surface_is_focused_strict_and_discovery_backed():
             input_schema={"type": "object"},
         ),
         MCPTool(
+            server="catalog",
+            name="get_service_context",
+            title="Get service context",
+            description="Read ownership and dependencies",
+            input_schema={"type": "object"},
+        ),
+        MCPTool(
             server="splunk",
             name="splunk_get_user_list",
             title="List users",
@@ -270,6 +321,7 @@ def test_llm_tool_surface_is_focused_strict_and_discovery_backed():
     assert {tool.agent_name for tool in read_tools} == {
         "tickets__list_my_tickets",
         "tickets__get_ticket",
+        "catalog__get_service_context",
         "splunk__get_service_health",
         "splunk__compare_service_baseline",
         "splunk__search_logs",
@@ -287,6 +339,61 @@ def test_llm_tool_surface_is_focused_strict_and_discovery_backed():
         set(tool["parameters"]["required"]) == set(tool["parameters"]["properties"])
         for tool in openai_tools
     )
+
+
+def test_llm_work_note_guardrail_preserves_context_and_fault_isolation():
+    timeline = [
+        ToolEvent(
+            server="catalog",
+            tool="get_service_context",
+            title="Resolve ownership",
+            arguments={"service": "checkout-api"},
+            status="complete",
+            summary="Context loaded",
+            duration_ms=1,
+            result={
+                "service": "checkout-api",
+                "owner_team": "Digital Commerce",
+                "on_call": "Commerce Platform",
+                "dependencies": [{"service": "inventory-api"}],
+                "runbook": {"reference": "runbook://commerce/checkout-degradation"},
+                "evidence_ref": "catalog://services/checkout-api",
+            },
+        ),
+        ToolEvent(
+            server="splunk",
+            tool="splunk_run_query",
+            title="Check service health",
+            arguments={"query": "service=inventory-api"},
+            status="complete",
+            summary="Healthy",
+            duration_ms=1,
+            result={
+                "service": "inventory-api",
+                "state": "healthy",
+                "metrics": {"error_rate_pct": 0.0, "p95_ms": 180},
+                "evidence_ref": "splunk://inventory-health",
+            },
+        ),
+    ]
+
+    prepared = DemoAgent._prepare_work_note_arguments(
+        {
+            "ticket_id": "INC-1042",
+            "body": "Checkout is degraded.",
+            "evidence_refs": ["splunk://checkout-health"],
+        },
+        timeline,
+    )
+
+    assert prepared["evidence_refs"] == [
+        "catalog://services/checkout-api",
+        "splunk://inventory-health",
+        "splunk://checkout-health",
+    ]
+    assert "Digital Commerce owns checkout-api" in prepared["body"]
+    assert "inventory-api is healthy" in prepared["body"]
+    assert "before dependency escalation" in prepared["body"]
 
 
 async def test_remote_mcp_target_applies_bearer_token_and_tls_policy(monkeypatch):

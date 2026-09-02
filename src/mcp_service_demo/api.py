@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +34,13 @@ def _splunk_mcp_target(runtime_settings: Settings | None = None) -> MCPRemoteTar
     )
 
 
-broker = MCPBroker({"splunk": _splunk_mcp_target, "tickets": settings.ticket_mcp_url})
+broker = MCPBroker(
+    {
+        "splunk": _splunk_mcp_target,
+        "tickets": settings.ticket_mcp_url,
+        "catalog": settings.catalog_mcp_url,
+    }
+)
 
 
 def _runtime_agent() -> DemoAgent:
@@ -43,7 +50,7 @@ def _runtime_agent() -> DemoAgent:
 app = FastAPI(
     title="MCP Service Demo",
     description="Agent host and service-desk API for the Splunk MCP demonstration.",
-    version="0.5.0",
+    version="0.6.0",
 )
 
 static_dir = Path(__file__).parent / "static"
@@ -118,6 +125,7 @@ async def health() -> dict[str, Any]:
         "mcp_servers": {
             "splunk": runtime_settings.splunk_mcp_url,
             "tickets": settings.ticket_mcp_url,
+            "catalog": settings.catalog_mcp_url,
         },
     }
 
@@ -307,6 +315,11 @@ async def mcp_tools() -> dict[str, Any]:
                 "title": "Northstar Service Desk",
                 "url": settings.ticket_mcp_url,
             },
+            {
+                "name": "catalog",
+                "title": "Northstar Service Catalog",
+                "url": settings.catalog_mcp_url,
+            },
         ],
         "tools": [
             {
@@ -336,24 +349,26 @@ async def get_ticket(ticket_id: str) -> dict[str, Any]:
 
 @app.post("/api/agent/chat")
 async def agent_chat(request: ChatRequest) -> dict[str, Any]:
+    started = time.perf_counter()
     try:
         result = await _runtime_agent().chat(request.message, request.ticket_id)
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Agent workflow failed: {exc}") from exc
-    return result.to_dict()
+    return result.to_dict(elapsed_ms=int((time.perf_counter() - started) * 1000))
 
 
 @app.post("/api/agent/investigate/{ticket_id}")
 async def investigate_ticket(ticket_id: str, request: InvestigateRequest) -> dict[str, Any]:
+    started = time.perf_counter()
     try:
         result = await _runtime_agent().investigate(ticket_id, write_back=request.write_back)
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Investigation failed: {exc}") from exc
-    return result.to_dict()
+    return result.to_dict(elapsed_ms=int((time.perf_counter() - started) * 1000))
 
 
 @app.post("/api/demo/reset")

@@ -1,16 +1,19 @@
 # MCP Service Demo
 
-A deliberately small demonstration of an AI agent using the Model Context Protocol (MCP) across two familiar enterprise systems:
+A deliberately small demonstration of an AI agent using the Model Context Protocol (MCP) across three familiar enterprise systems:
 
 - a read-only **Splunk MCP server** backed by either a real Splunk endpoint or a local fixture
 - a read/write **service desk MCP server** backed by a local ticket store
+- a read-only **service catalog MCP server** with ownership, dependencies, escalation, and runbooks
 - an **agent host** that discovers and calls those tools
 - a browser experience with an agent chat and a ServiceNow-like ticket queue
 - a companion **Splunk app and HEC scenario loader** for repeatable live demonstrations
 
 The main story is one complete, visible loop:
 
-> An analyst opens `INC-1042`, clicks **Ask Splunk**, watches the agent collect evidence through MCP, and sees a sourced investigation note written back to the ticket.
+> An analyst opens `INC-1042`, clicks **Ask Splunk**, and watches the agent resolve ownership,
+> collect evidence, prove an implicated dependency is healthy, and write a sourced investigation
+> note back to the ticket.
 
 The incident is synthetic, but the interfaces and operations are real. MCP discovery and calls,
 Splunk MCP searches, HEC publication, database reads, and ticket writes execute during the demo.
@@ -65,8 +68,9 @@ settings are kept in separate named volumes.
 | Demo web app | `http://127.0.0.1:8100` | Briefing, agent chat, and ticket UI |
 | Splunk MCP | `http://127.0.0.1:8101/mcp` | Read-only telemetry tools |
 | Ticket MCP | `http://127.0.0.1:8102/mcp` | Ticket reads and controlled updates |
+| Service Catalog MCP | `http://127.0.0.1:8103/mcp` | Read-only ownership, dependency, and runbook context |
 
-The `run` command starts all three services and seeds the scenario. Press `Ctrl+C` to stop them.
+The `run` command starts all four processes and seeds the scenario. Press `Ctrl+C` to stop them.
 
 ## Presenter resources
 
@@ -83,6 +87,7 @@ mcp-service-demo seed-splunk  # publish a fresh scenario through HEC (live mode)
 mcp-service-demo package-splunk-app # create the installable Splunk app archive
 mcp-service-demo splunk-mcp   # run only the Splunk MCP server
 mcp-service-demo ticket-mcp   # run only the ticket MCP server
+mcp-service-demo catalog-mcp  # run only the service catalog MCP server
 mcp-service-demo web          # run only the browser/API host
 pytest                        # run the test suite
 ```
@@ -96,3 +101,4 @@ This project is intentionally not a discovery platform, RAG system, workflow eng
 ServiceNow clone. It optimizes for a reliable 8–10 minute customer demonstration and a codebase
 that can be understood in one sitting. The local service desk is a facsimile, but its queue,
 ticket reads, notes, and status changes are persistent operations made through its MCP server.
+The service catalog is synthetic and deliberately small, but its discovery and tool calls are real.

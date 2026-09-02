@@ -48,13 +48,32 @@ class AgentResult:
     ticket_updated: bool = False
     ticket_id: str | None = None
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, elapsed_ms: int | None = None) -> dict[str, Any]:
+        systems = list(dict.fromkeys(event.server for event in self.timeline))
+        evidence_refs: list[str] = []
+        for event in self.timeline:
+            if isinstance(event.result, dict):
+                ref = event.result.get("evidence_ref")
+                if ref and ref not in evidence_refs:
+                    evidence_refs.append(ref)
+            for ref in event.arguments.get("evidence_refs") or []:
+                if ref not in evidence_refs:
+                    evidence_refs.append(ref)
         return {
             "message": self.message,
             "mode": self.mode,
             "timeline": [asdict(event) for event in self.timeline],
             "ticket_updated": self.ticket_updated,
             "ticket_id": self.ticket_id,
+            "outcomes": {
+                "elapsed_seconds": round(elapsed_ms / 1000, 1) if elapsed_ms is not None else None,
+                "systems_coordinated": len(systems),
+                "systems": systems,
+                "mcp_calls": len(self.timeline),
+                "context_transfers_automated": max(0, len(systems) - 1),
+                "evidence_refs_preserved": len(evidence_refs),
+                "manual_rekeying": 0,
+            },
         }
 
 
@@ -110,6 +129,11 @@ class DemoAgent:
             return f"Loaded {result.get('id')} · {result.get('priority')} · {result.get('service')}"
         if tool == "list_my_tickets":
             return f"Found {len(result.get('tickets', []))} assigned tickets"
+        if tool == "get_service_context":
+            return (
+                f"{result.get('criticality')} · owner {result.get('owner_team')} · "
+                f"{len(result.get('dependencies', []))} dependencies"
+            )
         if tool == "get_service_health":
             metrics = result.get("metrics", {})
             return (
@@ -166,6 +190,13 @@ class DemoAgent:
             "tickets", "get_ticket", {"ticket_id": ticket_id}, timeline, "Read ticket context"
         )
         service = ticket["service"]
+        service_context = await self._call(
+            "catalog",
+            "get_service_context",
+            {"service": service},
+            timeline,
+            "Resolve ownership and dependencies",
+        )
         splunk_call = self._tracked_splunk_call(timeline)
         health = await self.splunk.get_service_health(
             service,
@@ -193,8 +224,32 @@ class DemoAgent:
                 call=splunk_call,
             )
 
-        note_body = self._build_work_note(ticket, health, baseline, logs, trace)
-        evidence_refs = self._evidence_refs(health, baseline, logs, trace)
+        dependency_health = None
+        implicated_dependency = self._implicated_dependency(service_context, logs, trace)
+        if implicated_dependency:
+            dependency_health = await self.splunk.get_service_health(
+                implicated_dependency,
+                30,
+                call=splunk_call,
+            )
+
+        note_body = self._build_work_note(
+            ticket,
+            service_context,
+            health,
+            baseline,
+            logs,
+            trace,
+            dependency_health,
+        )
+        evidence_refs = self._evidence_refs(
+            service_context,
+            health,
+            baseline,
+            logs,
+            trace,
+            dependency_health,
+        )
         updated = False
         if write_back:
             await self._call(
@@ -223,11 +278,20 @@ class DemoAgent:
             if updated
             else " I prepared a ticket-ready investigation note without changing the ticket."
         )
+        innocence_text = ""
+        if dependency_health and dependency_health.get("state") == "healthy":
+            dependency_metrics = dependency_health["metrics"]
+            innocence_text = (
+                f" {dependency_health['service']} is healthy at "
+                f"{dependency_metrics['error_rate_pct']}% errors and "
+                f"{dependency_metrics['p95_ms']} ms p95, narrowing the fault to the "
+                f"{service} client path rather than the dependency service."
+            )
         message = (
             f"I found a material degradation in **{service}**: {metrics['error_rate_pct']}% errors "
             f"and {metrics['p95_ms']} ms p95 latency in the last 30 minutes. The repeated failure "
             "is `inventory-client connection pool exhausted`."
-            f"{change_text}{action_text}"
+            f"{change_text}{innocence_text}{action_text}"
         )
         return AgentResult(
             message=message,
@@ -248,10 +312,12 @@ class DemoAgent:
     @staticmethod
     def _build_work_note(
         ticket: dict[str, Any],
+        service_context: dict[str, Any],
         health: dict[str, Any],
         baseline: dict[str, Any],
         logs: dict[str, Any],
         trace: dict[str, Any] | None,
+        dependency_health: dict[str, Any] | None,
     ) -> str:
         current = health["metrics"]
         previous = health["baseline"]
@@ -272,6 +338,10 @@ class DemoAgent:
             "",
             "Evidence",
             (
+                f"• Service context: {service_context['criticality']}; owner "
+                f"{service_context['owner_team']} / {service_context['on_call']}."
+            ),
+            (
                 f"• Error rate: {current['error_rate_pct']}% ({current['errors']} of "
                 f"{current['requests']} requests); preceding window: "
                 f"{previous['error_rate_pct']}%."
@@ -283,6 +353,13 @@ class DemoAgent:
             lines.append(f"• Recent change: {change.get('message')} at {change.get('timestamp')}.")
         if trace_services:
             lines.append(f"• Failed trace crosses: {' → '.join(trace_services)}.")
+        if dependency_health:
+            dependency_metrics = dependency_health["metrics"]
+            lines.append(
+                f"• Fault isolation: {dependency_health['service']} is "
+                f"{dependency_health['state']} at {dependency_metrics['error_rate_pct']}% errors "
+                f"and {dependency_metrics['p95_ms']} ms p95."
+            )
         lines.extend(
             [
                 "",
@@ -300,9 +377,32 @@ class DemoAgent:
                 "3. Monitor checkout error rate and p95 latency during mitigation.",
                 "",
                 f"Baseline comparison: {baseline['assessment']}",
+                f"Runbook: {service_context['runbook']['reference']}",
             ]
         )
         return "\n".join(lines)
+
+    @staticmethod
+    def _implicated_dependency(
+        service_context: dict[str, Any],
+        logs: dict[str, Any],
+        trace: dict[str, Any] | None,
+    ) -> str | None:
+        evidence_text = " ".join(
+            [
+                *(str(item.get("pattern", "")) for item in logs.get("top_patterns", [])),
+                *(str(item.get("message", "")) for item in logs.get("events", [])),
+                *(
+                    str(item.get("message", ""))
+                    for item in (trace or {}).get("events", [])
+                ),
+            ]
+        ).lower()
+        for dependency in service_context.get("dependencies", []):
+            signals = [dependency.get("service", ""), *dependency.get("signals", [])]
+            if any(str(signal).lower().split("-")[0] in evidence_text for signal in signals):
+                return str(dependency["service"])
+        return None
 
     async def chat(self, message: str, ticket_id: str | None = None) -> AgentResult:
         if self.settings.agent_mode == "openai":
@@ -364,6 +464,18 @@ class DemoAgent:
             (name for name in ("checkout-api", "inventory-api", "payment-api") if name in text),
             "checkout-api",
         )
+        needs_cause = any(
+            word in text for word in ("why", "error", "cause", "changed", "investigate")
+        )
+        service_context = None
+        if needs_cause or any(word in text for word in ("owner", "runbook", "dependency")):
+            service_context = await self._call(
+                "catalog",
+                "get_service_context",
+                {"service": service},
+                timeline,
+                "Resolve ownership and dependencies",
+            )
         splunk_call = self._tracked_splunk_call(timeline)
         health = await self.splunk.get_service_health(
             service,
@@ -371,7 +483,7 @@ class DemoAgent:
             call=splunk_call,
         )
         logs = None
-        if any(word in text for word in ("why", "error", "cause", "changed", "investigate")):
+        if needs_cause:
             logs = await self.splunk.search_logs(
                 service,
                 "ERROR",
@@ -379,6 +491,15 @@ class DemoAgent:
                 10,
                 call=splunk_call,
             )
+        dependency_health = None
+        if logs and service_context:
+            dependency = self._implicated_dependency(service_context, logs, None)
+            if dependency:
+                dependency_health = await self.splunk.get_service_health(
+                    dependency,
+                    30,
+                    call=splunk_call,
+                )
         metrics = health["metrics"]
         response = (
             f"**{service} is {health['state']}** over the last 30 minutes: "
@@ -388,6 +509,16 @@ class DemoAgent:
             pattern = (logs.get("top_patterns") or [{}])[0].get("pattern")
             if pattern:
                 response += f" The dominant error pattern is `{pattern}`."
+        if service_context:
+            response += (
+                f" {service_context['owner_team']} owns the service; the first-response runbook is "
+                f"`{service_context['runbook']['reference']}`."
+            )
+        if dependency_health and dependency_health.get("state") == "healthy":
+            response += (
+                f" {dependency_health['service']} is healthy, narrowing the fault to the "
+                f"{service} client path."
+            )
         if health.get("recent_changes"):
             response += " A checkout-api deployment appears immediately before the degraded window."
         return AgentResult(message=response, mode="guided", timeline=timeline)
@@ -511,6 +642,9 @@ class DemoAgent:
             except (json.JSONDecodeError, ValueError) as exc:
                 return self._model_tool_output(call.call_id, error=str(exc))
 
+            if descriptor.server == "tickets" and descriptor.name == "add_work_note":
+                arguments = self._prepare_work_note_arguments(arguments, timeline)
+
             try:
                 async with semaphore:
                     result = await self._execute_agent_tool(descriptor, arguments, timeline)
@@ -544,25 +678,99 @@ class DemoAgent:
             )
 
         call = self._tracked_splunk_call(timeline)
+        timeline_start = len(timeline)
         if descriptor.name == "get_service_health":
-            return await self.splunk.get_service_health(
+            result = await self.splunk.get_service_health(
                 arguments["service"], arguments["minutes"], call=call
             )
-        if descriptor.name == "compare_service_baseline":
-            return await self.splunk.compare_service_baseline(
+        elif descriptor.name == "compare_service_baseline":
+            result = await self.splunk.compare_service_baseline(
                 arguments["service"], arguments["minutes"], call=call
             )
-        if descriptor.name == "search_logs":
-            return await self.splunk.search_logs(
+        elif descriptor.name == "search_logs":
+            result = await self.splunk.search_logs(
                 arguments["service"],
                 arguments["keywords"],
                 arguments["minutes"],
                 arguments["limit"],
                 call=call,
             )
-        if descriptor.name == "trace_request":
-            return await self.splunk.trace_request(arguments["trace_id"], call=call)
-        raise ValueError(f"Unsupported Splunk incident operation: {descriptor.name}")
+        elif descriptor.name == "trace_request":
+            result = await self.splunk.trace_request(arguments["trace_id"], call=call)
+        else:
+            raise ValueError(f"Unsupported Splunk incident operation: {descriptor.name}")
+
+        # A generic Splunk MCP exposes splunk_run_query, while the model works with the focused
+        # incident operation above it. Retain that focused, evidence-bearing result on the visible
+        # event so provenance and work-note safeguards do not depend on model transcription.
+        for event in reversed(timeline[timeline_start:]):
+            if event.server == "splunk":
+                event.result = result
+                break
+        return result
+
+    @staticmethod
+    def _prepare_work_note_arguments(
+        arguments: dict[str, Any], timeline: list[ToolEvent]
+    ) -> dict[str, Any]:
+        """Preserve read evidence and verified routing facts before an LLM-authored write."""
+        prepared = dict(arguments)
+        refs: list[str] = []
+        context: dict[str, Any] | None = None
+        health_by_service: dict[str, dict[str, Any]] = {}
+
+        for event in timeline:
+            if not isinstance(event.result, dict):
+                continue
+            result = event.result
+            ref = result.get("evidence_ref")
+            if ref and ref not in refs:
+                refs.append(ref)
+            if event.server == "catalog" and result.get("service"):
+                context = result
+            if event.server == "splunk" and result.get("service") and result.get("state"):
+                health_by_service[str(result["service"])] = result
+
+        for ref in prepared.get("evidence_refs") or []:
+            if ref not in refs:
+                refs.append(ref)
+        prepared["evidence_refs"] = refs
+
+        body = str(prepared.get("body", "")).strip()
+        additions: list[str] = []
+        body_lower = body.lower()
+        if context:
+            owner = str(context.get("owner_team", ""))
+            runbook = str((context.get("runbook") or {}).get("reference", ""))
+            context_ref = str(context.get("evidence_ref", ""))
+            if owner.lower() not in body_lower or (runbook and runbook.lower() not in body_lower):
+                additions.append(
+                    f"Routing context: {owner} owns {context['service']}; on-call "
+                    f"{context.get('on_call')}. Runbook: {runbook}. Context: {context_ref}."
+                )
+
+            for dependency in context.get("dependencies", []):
+                service = str(dependency.get("service", ""))
+                health = health_by_service.get(service)
+                normalized_phrase = f"{service.replace('-', ' ')} is healthy"
+                if (
+                    health
+                    and health.get("state") == "healthy"
+                    and normalized_phrase not in body_lower.replace("-", " ")
+                ):
+                    metrics = health.get("metrics") or {}
+                    additions.append(
+                        f"Fault isolation: {service} is healthy at "
+                        f"{metrics.get('error_rate_pct', 0)}% errors and "
+                        f"{metrics.get('p95_ms', 0)} ms p95, narrowing the fault to the "
+                        f"{context['service']} client path before dependency escalation."
+                    )
+
+        if additions:
+            body = f"{body}\n\n" if body else ""
+            body += "\n".join(additions)
+        prepared["body"] = body
+        return prepared
 
     @staticmethod
     def _model_tool_output(
@@ -582,7 +790,9 @@ class DemoAgent:
         context = f" The user is viewing ticket {ticket_id}." if ticket_id else ""
         write_policy = (
             "Ticket writes are authorized for this request. Add one evidence-based work note only "
-            "after the investigation is complete; do not resolve the incident."
+            "after the investigation is complete; include the service owner and runbook, any "
+            "verified healthy dependency and the resulting fault isolation, and every evidence_ref "
+            "returned by any MCP read. Do not resolve the incident."
             if allow_writes
             else "This request is read-only. No ticket write tools are available."
         )
@@ -594,19 +804,26 @@ class DemoAgent:
             "invent raw SPL, field names, metrics, ticket state, or evidence.\n\n"
             "Investigation policy:\n"
             "- Read a ticket before using its service as context.\n"
+            "- For a ticket or full investigation, call get_service_context after reading the "
+            "ticket. Use it for ownership, criticality, dependencies, and the runbook.\n"
             "- For service health, call get_service_health. For a cause or full investigation, "
             "also call compare_service_baseline and search_logs. These independent reads may be "
             "requested together. Use a 30-minute window unless the user explicitly asks for "
             "another period.\n"
             "- If search_logs returns a trace_id, call trace_request once to confirm the affected "
             "service path. Do not repeat a successful operation.\n"
+            "- When logs or a trace implicate a named catalog dependency, call "
+            "get_service_health once for that dependency. If it is healthy, say that the evidence "
+            "narrows fault away from the dependency service; do not assign blame from a trace "
+            "alone.\n"
             "- Complete the investigation in this turn. Do not ask the user which search to run "
             "next when the available operations can answer the request.\n"
             "- Cite evidence_ref values when available. Clearly distinguish observations from "
             "inference. Never claim a ticket changed unless a write tool succeeded.\n"
             "- Keep the final answer under 180 words. Lead with one finding sentence, then use no "
-            "more than five bullets total for metrics, baseline, error/trace, recommended action, "
-            "and ticket update status. Do not add a second analysis section, ask a follow-up "
+            "more than five bullets total for ownership, metrics/baseline, fault isolation, "
+            "recommended action, and ticket update status. Do not add a second analysis section, "
+            "ask a follow-up "
             "question, or print raw SPL unless the user asks for it.\n\n"
             f"{write_policy}{context}\n"
             f"Demo data contract: app={self.settings.splunk_app}, "
@@ -639,6 +856,26 @@ class DemoAgent:
                 ),
                 input_schema=_object_schema(
                     {"assignee": {"type": "string", "description": "Analyst name; use Maya Chen."}}
+                ),
+            )
+        )
+        add_if_supported(
+            MCPTool(
+                server="catalog",
+                name="get_service_context",
+                title="Resolve ownership and dependencies",
+                description=(
+                    "Return the authoritative owner, criticality, dependencies, escalation "
+                    "channel, and runbook for a service. Use before assigning fault or routing "
+                    "the incident."
+                ),
+                input_schema=_object_schema(
+                    {
+                        "service": {
+                            "type": "string",
+                            "description": "Service name from the ticket.",
+                        }
+                    }
                 ),
             )
         )
@@ -769,7 +1006,8 @@ class DemoAgent:
                                 "type": "array",
                                 "items": {"type": "string"},
                                 "description": (
-                                    "Unique evidence_ref values returned by Splunk operations."
+                                    "Unique evidence_ref values returned by every MCP read, "
+                                    "including service catalog and Splunk operations."
                                 ),
                             },
                         }

@@ -34,10 +34,13 @@ class Settings:
     splunk_mcp_port: int
     ticket_mcp_host: str
     ticket_mcp_port: int
+    catalog_mcp_host: str
+    catalog_mcp_port: int
     splunk_mcp_url: str
     splunk_mcp_token: str | None
     splunk_mcp_verify: bool | str
     ticket_mcp_url: str
+    catalog_mcp_url: str
     splunk_data_mode: str
     splunk_rest_url: str
     splunk_rest_token: str | None
@@ -92,6 +95,7 @@ class Settings:
 def get_environment_settings() -> Settings:
     splunk_port = int(os.getenv("SPLUNK_MCP_PORT", "8101"))
     ticket_port = int(os.getenv("TICKET_MCP_PORT", "8102"))
+    catalog_port = int(os.getenv("CATALOG_MCP_PORT", "8103"))
     splunk_data_mode = os.getenv("SPLUNK_DATA_MODE", "fixture").strip().lower()
     if splunk_data_mode not in {"fixture", "live"}:
         raise ValueError("SPLUNK_DATA_MODE must be 'fixture' or 'live'")
@@ -112,10 +116,13 @@ def get_environment_settings() -> Settings:
         splunk_mcp_port=splunk_port,
         ticket_mcp_host=os.getenv("TICKET_MCP_HOST", "127.0.0.1"),
         ticket_mcp_port=ticket_port,
+        catalog_mcp_host=os.getenv("CATALOG_MCP_HOST", "127.0.0.1"),
+        catalog_mcp_port=catalog_port,
         splunk_mcp_url=os.getenv("SPLUNK_MCP_URL", f"http://127.0.0.1:{splunk_port}/mcp"),
         splunk_mcp_token=os.getenv("SPLUNK_MCP_TOKEN") or None,
         splunk_mcp_verify=_tls_verify("SPLUNK_MCP"),
         ticket_mcp_url=os.getenv("TICKET_MCP_URL", f"http://127.0.0.1:{ticket_port}/mcp"),
+        catalog_mcp_url=os.getenv("CATALOG_MCP_URL", f"http://127.0.0.1:{catalog_port}/mcp"),
         splunk_data_mode=splunk_data_mode,
         splunk_rest_url=os.getenv("SPLUNK_REST_URL", "https://127.0.0.1:8089").rstrip("/"),
         splunk_rest_token=os.getenv("SPLUNK_REST_TOKEN") or None,

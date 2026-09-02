@@ -16,7 +16,7 @@ RUN python -m pip install --no-cache-dir .
 COPY data ./data
 COPY splunk_app ./splunk_app
 
-EXPOSE 8100 8101 8102
+EXPOSE 8100 8101 8102 8103
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/api/health', timeout=2)"
