@@ -75,6 +75,30 @@ def update_ticket_status(ticket_id: str, status: str) -> dict[str, Any]:
     return {"updated": True, "ticket": _store().update_ticket_status(ticket_id, status)}
 
 
+@ticket_mcp.tool(
+    title="Assign ticket",
+    description="Assign or reassign a ticket to a named service desk analyst.",
+)
+def assign_ticket(ticket_id: str, assignee: str) -> dict[str, Any]:
+    """Change the analyst responsible for a ticket and record the activity."""
+    return {"updated": True, "ticket": _store().assign_ticket(ticket_id, assignee)}
+
+
+@ticket_mcp.tool(
+    title="Escalate ticket",
+    description=(
+        "Escalate a ticket to an assignment group with a recorded reason and move it to "
+        "Investigating."
+    ),
+)
+def escalate_ticket(ticket_id: str, assignment_group: str, reason: str) -> dict[str, Any]:
+    """Route a ticket to an escalation group and preserve the reason as activity."""
+    return {
+        "updated": True,
+        "ticket": _store().escalate_ticket(ticket_id, assignment_group, reason),
+    }
+
+
 def run_ticket_server() -> None:
     settings = get_settings()
     _store()

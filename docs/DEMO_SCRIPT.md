@@ -27,8 +27,16 @@ Suggested framing:
 
 > An agent can already reason and write. MCP gives it a standard way to discover what a system can do, provide typed arguments, invoke an operation, and receive structured results. The systems keep owning their data and actions; the agent becomes the coordinator.
 
-Point out the live tool count and three independent servers. The agent discovers those capabilities
-at runtime rather than duplicating each system's integration logic in the UI.
+Use the connection pill in the header to open the live topology. It shows three independent MCP
+servers, their endpoints, permission boundaries, and every tool discovered at runtime:
+
+- **Northstar Service Desk** owns the employee request and the durable action record;
+- **Northstar Service Catalog** owns responsibility, dependencies, escalation, and runbooks;
+- **Splunk Operations** owns the operational evidence used to verify the fault domain.
+
+Click any tool to explain why it matters in this incident, when the agent uses it, and whether it is
+read-only or a controlled write. The agent discovers these capabilities rather than duplicating
+each system's integration logic in the UI.
 
 If using live mode, also point out **Real Splunk endpoint** in the briefing and **Splunk live** in
 the header. Those labels are populated from runtime status rather than presenter copy.
@@ -37,7 +45,8 @@ the header. Those labels are populated from runtime status rather than presenter
 
 Open **Agent** and choose **Find the cause**.
 
-Call attention to the MCP timeline as the answer is built:
+Call attention to the MCP timeline immediately after submitting the request. It begins with intent
+and tool selection, then updates each operation from running to complete as the servers respond:
 
 1. `catalog.get_service_context` resolves ownership, dependencies, and the first-response runbook.
 2. `splunk.get_service_health` calculates error rate and p95 latency.
@@ -55,14 +64,20 @@ Reset the demo, then open **Service desk** and select `INC-1042`.
 
 Explain that the ticket contains only the customer's symptoms and business context. Click **Ask Splunk**.
 
-The authorized workflow:
+The authorized six-step workflow:
 
 1. reads the ticket through the service-desk MCP server;
 2. resolves the service owner, dependencies, escalation path, and runbook through the catalog;
 3. calculates current Splunk health and compares it to a baseline;
-4. searches correlated errors, follows a failed trace, and verifies the implicated dependency;
-5. writes a sourced internal work note through the service-desk MCP server;
-6. moves the incident to **Investigating**.
+4. searches correlated errors and follows a failed trace;
+5. tests the alternative hypothesis by checking the implicated inventory dependency and proving
+   that it is healthy;
+6. writes the finding, routing context, next actions, and deep-linked evidence back to the ticket.
+
+The right side of the ticket makes the other systems tangible. **Service Catalog** displays the
+live owner, on-call team, dependencies, and runbook. The action panel offers a full investigation,
+a focused Splunk health check, or a catalog lookup. Human-facing service-desk controls demonstrate
+real assignment, escalation, and status operations; all are persistent and restored by reset.
 
 End on the outcome strip and new work note. The strip makes four employee outcomes explicit:
 

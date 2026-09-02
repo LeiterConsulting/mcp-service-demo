@@ -33,7 +33,7 @@ mcp-service-demo run
 
 Open [http://127.0.0.1:8100](http://127.0.0.1:8100).
 
-An LLM is optional. Open **LLM setup** to switch between the deterministic Guided agent and an
+An LLM is optional. Open **Setup → Agent & LLM** to switch between the deterministic Guided agent and an
 LLM-assisted agent that selects and sequences focused incident operations backed by the discovered
 MCP capabilities. The setup supports an OpenAI or Responses-compatible endpoint, model, encrypted
 API key, and connection test. A balanced runtime profile bounds retries and downstream concurrency
@@ -41,7 +41,7 @@ while leaving enough turns and tool calls for the complete ticket workflow. Guid
 presentation-safe fallback if the model endpoint is unavailable.
 
 The default `SPLUNK_DATA_MODE=fixture` is the zero-dependency path. To use a real endpoint,
-install the companion Splunk app, open **Splunk setup** in the demo header, enter the MCP and HEC
+install the companion Splunk app, open **Setup → Splunk** in the demo header, enter the MCP and HEC
 connections, and switch to live mode. Direct REST credentials are only needed for the bundled
 local Splunk MCP server. The same values can still be
 supplied through environment variables. See [`docs/SPLUNK_SETUP.md`](docs/SPLUNK_SETUP.md).
@@ -51,6 +51,12 @@ endpoint, masked bearer token, TLS verification, optional CA bundle, and a conne
 this demo's language and visual design. The panel separately configures optional direct REST access
 and the HEC publisher. Splunk and LLM overrides are encrypted in the persistent
 `demo-settings` volume and take effect without a restart.
+
+The connection indicator opens a live inventory of the three MCP servers, their access boundaries,
+and their discovered tools. Tool chips explain why each capability matters in the incident story.
+During an agent run, the protocol timeline streams tool selection and completion as it happens.
+The service desk also exposes catalog context, Splunk evidence links, and resettable assignment,
+escalation, and status controls so the full cross-system workflow is visible without leaving the ticket.
 
 ### Docker alternative
 

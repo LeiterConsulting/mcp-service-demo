@@ -8,7 +8,7 @@
       content="A live demonstration of an agent using MCP to investigate Splunk telemetry and enrich a service ticket."
     />
     <title>MCP Service Demo</title>
-    <link rel="stylesheet" href="/static/styles.css?v=0.6.0" />
+    <link rel="stylesheet" href="/static/styles.css?v=0.7.0" />
   </head>
   <body>
     <div class="app-shell">
@@ -30,18 +30,12 @@
         </nav>
 
         <div class="topbar-actions">
-          <span class="connection-pill" id="connection-pill">
+          <button class="connection-pill" id="connection-pill" type="button" title="View MCP connections and discovered tools">
             <span class="status-dot"></span>
             <span>Connecting</span>
-          </span>
-          <button class="button ghost small" id="llm-settings-button" title="Configure guided or LLM-assisted agent mode">
-            <span aria-hidden="true">✦</span> LLM setup
           </button>
-          <button class="button ghost small" id="settings-button" title="Configure the Splunk connection">
-            <span aria-hidden="true">⚙</span> Splunk setup
-          </button>
-          <button class="button ghost small" id="reset-button" title="Restore scenario and ticket data; Splunk and LLM setup are preserved">
-            Reset demo
+          <button class="button ghost small" id="setup-button" title="Configure the demo environment">
+            <span aria-hidden="true">⚙</span> Setup
           </button>
         </div>
       </header>
@@ -52,10 +46,10 @@
             <div class="hero-grid">
               <div class="hero-copy">
                 <div class="eyebrow" id="data-source-label"><span></span> Live protocol · Fixture telemetry</div>
-                <h1 id="briefing-title">One agent. Three systems.<br /><em>Less work between them.</em></h1>
+                <h1 id="briefing-title">A governed agent.<br /><em>Across systems of record.</em></h1>
                 <p class="hero-lede">
-                  MCP lets an agent carry trusted context between the systems employees already use—reducing
-                  re-keying, shortening investigations, and helping teams prove where a problem is not.
+                  MCP turns approved enterprise capabilities into a coordinated operating layer. The agent
+                  investigates, verifies, and acts across systems while each platform retains authority.
                 </p>
                 <div class="hero-actions">
                   <button class="button primary" data-view="agent">Try the agent <span>→</span></button>
@@ -79,12 +73,22 @@
                   </div>
                 </article>
 
-                <div class="protocol-line">
-                  <span class="packet one"></span>
-                  <span class="packet two"></span>
+                <div class="protocol-network" aria-hidden="true">
+                  <svg viewBox="0 0 180 420" preserveAspectRatio="none">
+                    <defs>
+                      <marker id="request-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"></path></marker>
+                      <marker id="response-arrow" viewBox="0 0 10 10" refX="2" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 10 0 L 0 5 L 10 10 z"></path></marker>
+                    </defs>
+                    <path class="request-path" d="M0 210 C72 210 92 70 180 70"></path>
+                    <path class="response-path" d="M180 82 C94 82 74 218 0 218"></path>
+                    <path class="request-path" d="M0 210 C72 210 104 210 180 210"></path>
+                    <path class="response-path" d="M180 222 C104 222 72 218 0 218"></path>
+                    <path class="request-path" d="M0 210 C72 210 92 350 180 350"></path>
+                    <path class="response-path" d="M180 362 C94 362 74 218 0 218"></path>
+                  </svg>
                   <div class="protocol-badge">
                     <b>MCP</b>
-                    <small>discover · call · return</small>
+                    <small>request · result</small>
                   </div>
                 </div>
 
@@ -131,27 +135,32 @@
               <article class="story-panel">
                 <div class="panel-heading">
                   <span class="step-number">Demo story</span>
-                  <h2>From customer report to sourced action</h2>
+                  <h2>The complete incident path</h2>
                 </div>
                 <div class="story-steps">
                   <div class="story-step">
                     <span>01</span>
-                    <div><b>Read the ticket</b><small>The agent receives service, impact, and user context.</small></div>
+                    <div><b>Establish the request</b><code>tickets.get_ticket</code><small>Read impact, service, priority, and employee context from the system of record.</small></div>
                   </div>
-                  <div class="story-arrow">→</div>
                   <div class="story-step">
                     <span>02</span>
-                    <div><b>Resolve context</b><small>The catalog supplies ownership, dependencies, and the runbook.</small></div>
+                    <div><b>Resolve responsibility</b><code>catalog.get_service_context</code><small>Identify the owner, on-call team, dependencies, escalation path, and runbook.</small></div>
                   </div>
-                  <div class="story-arrow">→</div>
                   <div class="story-step">
                     <span>03</span>
-                    <div><b>Prove the fault domain</b><small>Splunk finds the failure and verifies the implicated dependency.</small></div>
+                    <div><b>Quantify the incident</b><code>splunk.get_service_health</code><code>compare_service_baseline</code><small>Measure the deviation rather than relying on the ticket description.</small></div>
                   </div>
-                  <div class="story-arrow">→</div>
                   <div class="story-step">
                     <span>04</span>
-                    <div><b>Enrich the record</b><small>A sourced work note is written through the ticket MCP server.</small></div>
+                    <div><b>Locate the failure</b><code>splunk.search_logs</code><code>trace_request</code><small>Correlate errors and follow one failed request across the service path.</small></div>
+                  </div>
+                  <div class="story-step">
+                    <span>05</span>
+                    <div><b>Test the alternative</b><code>get_service_health(inventory-api)</code><small>Verify the implicated dependency is healthy before escalating another team.</small></div>
+                  </div>
+                  <div class="story-step">
+                    <span>06</span>
+                    <div><b>Complete the work</b><code>tickets.add_work_note</code><small>Write the finding, routing context, next action, and evidence back with provenance.</small></div>
                   </div>
                 </div>
               </article>
@@ -180,7 +189,7 @@
                   <span class="workspace-kicker">Interactive agent</span>
                   <h1 id="agent-title">Operations copilot</h1>
                 </div>
-                <span class="mode-badge" id="agent-mode">Guided MCP</span>
+                <button class="mode-badge" id="agent-mode" type="button" title="Open agent settings">Guided MCP</button>
               </header>
               <div class="chat-thread" id="chat-thread" aria-live="polite"></div>
               <div class="prompt-row" id="prompt-row">
@@ -242,17 +251,25 @@
         </section>
       </main>
 
-      <dialog class="settings-dialog" id="splunk-settings-dialog" aria-labelledby="settings-title">
-        <form class="settings-shell" id="splunk-settings-form">
+      <dialog class="settings-dialog" id="setup-dialog" aria-labelledby="setup-title">
+        <div class="settings-shell">
           <header class="settings-header">
-            <div class="settings-mark" aria-hidden="true">S</div>
+            <div class="settings-mark" aria-hidden="true">⚙</div>
             <div>
               <span class="workspace-kicker">Demo environment</span>
-              <h2 id="settings-title">Splunk connections</h2>
-              <p>Configure the agent transport, optional fallback access, and scenario publisher.</p>
+              <h2 id="setup-title">Setup &amp; controls</h2>
+              <p>Manage evidence, reasoning, and presentation state in one place.</p>
             </div>
-            <button type="button" class="settings-close" id="settings-close" aria-label="Close settings">×</button>
+            <button type="button" class="settings-close" id="setup-close" aria-label="Close setup">×</button>
           </header>
+
+          <nav class="setup-tabs" role="tablist" aria-label="Setup sections">
+            <button class="active" type="button" role="tab" aria-selected="true" data-setup-tab="splunk">Splunk</button>
+            <button type="button" role="tab" aria-selected="false" data-setup-tab="llm">Agent &amp; LLM</button>
+            <button type="button" role="tab" aria-selected="false" data-setup-tab="demo">Demo controls</button>
+          </nav>
+
+          <form class="setup-panel active" id="splunk-settings-form" data-setup-panel="splunk">
 
           <div class="settings-body">
             <section class="settings-section source-section">
@@ -397,21 +414,9 @@
               <button class="button primary" type="submit" id="save-splunk-button">Save connection</button>
             </div>
           </footer>
-        </form>
-      </dialog>
+          </form>
 
-      <dialog class="settings-dialog llm-dialog" id="llm-settings-dialog" aria-labelledby="llm-settings-title">
-        <form class="settings-shell" id="llm-settings-form">
-          <header class="settings-header">
-            <div class="settings-mark llm-mark" aria-hidden="true">✦</div>
-            <div>
-              <span class="workspace-kicker">Agent runtime</span>
-              <h2 id="llm-settings-title">Agent &amp; LLM setup</h2>
-              <p>Choose a presentation-safe guided flow or let a model select focused MCP-backed incident operations.</p>
-            </div>
-            <button type="button" class="settings-close" id="llm-settings-close" aria-label="Close LLM settings">×</button>
-          </header>
-
+          <form class="setup-panel" id="llm-settings-form" data-setup-panel="llm" hidden>
           <div class="settings-body">
             <section class="settings-section source-section">
               <div class="settings-section-heading">
@@ -492,11 +497,62 @@
               <button class="button primary" type="submit" id="save-llm-button">Save agent mode</button>
             </div>
           </footer>
-        </form>
+          </form>
+
+          <section class="setup-panel demo-control-panel" data-setup-panel="demo" hidden>
+            <div class="settings-body">
+              <section class="settings-section demo-control-hero">
+                <div>
+                  <span class="settings-step">Presentation state</span>
+                  <h3>Restore the incident scenario</h3>
+                  <p>Republish deterministic Splunk data and return every ticket, assignment, escalation, note, and status to its starting point.</p>
+                </div>
+                <button class="button primary" type="button" id="reset-button">Reset demo</button>
+              </section>
+              <div class="settings-columns demo-settings-grid">
+                <section class="settings-section">
+                  <span class="settings-step">Scenario</span>
+                  <h3>Checkout degradation</h3>
+                  <div class="demo-setting-row"><span>Primary ticket</span><b>INC-1042</b></div>
+                  <div class="demo-setting-row"><span>Analyst</span><b>Maya Chen</b></div>
+                  <div class="demo-setting-row"><span>Service</span><b>checkout-api</b></div>
+                </section>
+                <section class="settings-section">
+                  <span class="settings-step">Reset boundary</span>
+                  <h3>Connections stay intact</h3>
+                  <div class="preserved-list"><span>✓ Splunk MCP and TLS</span><span>✓ HEC publisher</span><span>✓ LLM endpoint and key</span><span>✓ Agent tuning</span></div>
+                </section>
+              </div>
+            </div>
+            <footer class="settings-footer">
+              <p>Reset affects synthetic scenario data only. Saved connection secrets remain encrypted and preserved.</p>
+            </footer>
+          </section>
+        </div>
+      </dialog>
+
+      <dialog class="info-dialog" id="connections-dialog" aria-labelledby="connections-title">
+        <div class="info-shell">
+          <header class="info-header">
+            <div><span class="workspace-kicker">Live protocol topology</span><h2 id="connections-title">MCP connections</h2><p>Endpoints, health, permissions, and tools discovered by the agent host.</p></div>
+            <button type="button" class="settings-close" data-close-dialog="connections-dialog" aria-label="Close connections">×</button>
+          </header>
+          <div class="connections-overview" id="connections-overview"></div>
+        </div>
+      </dialog>
+
+      <dialog class="info-dialog tool-dialog" id="tool-dialog" aria-labelledby="tool-dialog-title">
+        <div class="info-shell">
+          <header class="info-header compact">
+            <div><span class="workspace-kicker" id="tool-dialog-server">MCP tool</span><h2 id="tool-dialog-title">Tool details</h2></div>
+            <button type="button" class="settings-close" data-close-dialog="tool-dialog" aria-label="Close tool details">×</button>
+          </header>
+          <div class="tool-detail" id="tool-detail"></div>
+        </div>
       </dialog>
 
       <div class="toast-region" id="toast-region" aria-live="polite"></div>
     </div>
-    <script src="/static/app.js?v=0.6.0" defer></script>
+    <script src="/static/app.js?v=0.7.0" defer></script>
   </body>
 </html>

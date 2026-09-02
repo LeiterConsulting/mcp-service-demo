@@ -37,6 +37,17 @@ That extra verification demonstrates **time to innocence**. A trace may cross `i
 healthy service-level telemetry prevents a premature escalation to the inventory team and narrows
 the likely fault to the checkout client's connection pool.
 
+The browser makes each system boundary inspectable. The header connection modal shows endpoint,
+health, permissions, and discovered tools. The service-desk view renders the current catalog record
+beside the ticket and deep-links portable `splunk://` evidence references into the configured
+Splunk Web search experience. Ticket assignment and escalation controls call the ticket MCP server,
+record activity, and remain inside the resettable demo boundary.
+
+Agent endpoints also offer newline-delimited streaming responses. A workflow-start event is emitted
+immediately, followed by running and completed MCP tool events carrying stable event IDs. The final
+result retains the same shape as the non-streaming API, so the UI can show honest protocol progress
+without changing the agent's evidence or authorization rules.
+
 ## Deterministic live data
 
 The scenario loader is part of this repository, not part of the agent. It resets the ticket store,

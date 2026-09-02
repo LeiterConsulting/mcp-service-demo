@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
+from collections.abc import Awaitable, Callable
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
@@ -43,14 +47,14 @@ broker = MCPBroker(
 )
 
 
-def _runtime_agent() -> DemoAgent:
-    return DemoAgent(get_settings(), broker)
+def _runtime_agent(on_event: Callable[[Any], Awaitable[None] | None] | None = None) -> DemoAgent:
+    return DemoAgent(get_settings(), broker, on_event=on_event)
 
 
 app = FastAPI(
     title="MCP Service Demo",
     description="Agent host and service-desk API for the Splunk MCP demonstration.",
-    version="0.6.0",
+    version="0.7.0",
 )
 
 static_dir = Path(__file__).parent / "static"
@@ -64,6 +68,19 @@ class ChatRequest(BaseModel):
 
 class InvestigateRequest(BaseModel):
     write_back: bool = True
+
+
+class TicketAssignmentUpdate(BaseModel):
+    assignee: str = Field(min_length=1, max_length=80)
+
+
+class TicketEscalationUpdate(BaseModel):
+    assignment_group: str = Field(min_length=1, max_length=100)
+    reason: str = Field(min_length=1, max_length=240)
+
+
+class TicketStatusUpdate(BaseModel):
+    status: str
 
 
 class SplunkConnectionUpdate(BaseModel):
@@ -309,6 +326,7 @@ async def mcp_tools() -> dict[str, Any]:
                 "name": "splunk",
                 "title": "Splunk Operations",
                 "url": runtime_settings.splunk_mcp_url,
+                "web_url": _splunk_web_url(runtime_settings),
             },
             {
                 "name": "tickets",
@@ -334,6 +352,23 @@ async def mcp_tools() -> dict[str, Any]:
     }
 
 
+def _splunk_web_url(runtime_settings: Settings) -> str:
+    mcp_host = urlsplit(runtime_settings.splunk_mcp_url).hostname
+    source = (
+        runtime_settings.splunk_mcp_url
+        if mcp_host not in {None, "127.0.0.1", "localhost", "0.0.0.0"}
+        else runtime_settings.splunk_rest_url or runtime_settings.splunk_mcp_url
+    )
+    parsed = urlsplit(source)
+    hostname = parsed.hostname or "127.0.0.1"
+    host = f"[{hostname}]" if ":" in hostname and not hostname.startswith("[") else hostname
+    port = parsed.port
+    if port in {8089, 8088, 8101}:
+        port = 8000
+    netloc = f"{host}:{port}" if port else host
+    return urlunsplit((parsed.scheme or "https", netloc, "", "", ""))
+
+
 @app.get("/api/tickets")
 async def list_tickets(assignee: str = "Maya Chen") -> dict[str, Any]:
     return {"tickets": store.list_tickets(assignee)}
@@ -345,6 +380,50 @@ async def get_ticket(ticket_id: str) -> dict[str, Any]:
     if ticket is None:
         raise HTTPException(status_code=404, detail="Ticket not found")
     return ticket
+
+
+@app.get("/api/catalog/services/{service}")
+async def get_catalog_service(service: str) -> dict[str, Any]:
+    try:
+        return await broker.call("catalog", "get_service_context", {"service": service})
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Service context unavailable: {exc}") from exc
+
+
+@app.post("/api/tickets/{ticket_id}/assign")
+async def assign_ticket(ticket_id: str, update: TicketAssignmentUpdate) -> dict[str, Any]:
+    try:
+        return await broker.call(
+            "tickets", "assign_ticket", {"ticket_id": ticket_id, "assignee": update.assignee}
+        )
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/tickets/{ticket_id}/escalate")
+async def escalate_ticket(ticket_id: str, update: TicketEscalationUpdate) -> dict[str, Any]:
+    try:
+        return await broker.call(
+            "tickets",
+            "escalate_ticket",
+            {
+                "ticket_id": ticket_id,
+                "assignment_group": update.assignment_group,
+                "reason": update.reason,
+            },
+        )
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/tickets/{ticket_id}/status")
+async def update_ticket_status(ticket_id: str, update: TicketStatusUpdate) -> dict[str, Any]:
+    try:
+        return await broker.call(
+            "tickets", "update_ticket_status", {"ticket_id": ticket_id, "status": update.status}
+        )
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/agent/chat")
@@ -359,6 +438,60 @@ async def agent_chat(request: ChatRequest) -> dict[str, Any]:
     return result.to_dict(elapsed_ms=int((time.perf_counter() - started) * 1000))
 
 
+def _stream_agent_workflow(
+    operation: Callable[[DemoAgent], Awaitable[Any]],
+) -> StreamingResponse:
+    async def stream():
+        queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+        started = time.perf_counter()
+
+        async def on_event(event: Any) -> None:
+            await queue.put({"type": "tool", "event": asdict(event)})
+
+        async def produce() -> None:
+            try:
+                result = await operation(_runtime_agent(on_event))
+                await queue.put(
+                    {
+                        "type": "result",
+                        "result": result.to_dict(
+                            elapsed_ms=int((time.perf_counter() - started) * 1000)
+                        ),
+                    }
+                )
+            except Exception as exc:
+                await queue.put({"type": "error", "message": str(exc)})
+            finally:
+                await queue.put(None)
+
+        task = asyncio.create_task(produce())
+        yield json.dumps(
+            {
+                "type": "workflow",
+                "message": "Interpreting the request and selecting discovered MCP tools",
+            }
+        ) + "\n"
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield json.dumps(item, default=str) + "\n"
+        await task
+
+    return StreamingResponse(
+        stream(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/api/agent/chat/stream")
+async def stream_agent_chat(request: ChatRequest) -> StreamingResponse:
+    return _stream_agent_workflow(
+        lambda agent: agent.chat(request.message, request.ticket_id)
+    )
+
+
 @app.post("/api/agent/investigate/{ticket_id}")
 async def investigate_ticket(ticket_id: str, request: InvestigateRequest) -> dict[str, Any]:
     started = time.perf_counter()
@@ -369,6 +502,15 @@ async def investigate_ticket(ticket_id: str, request: InvestigateRequest) -> dic
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Investigation failed: {exc}") from exc
     return result.to_dict(elapsed_ms=int((time.perf_counter() - started) * 1000))
+
+
+@app.post("/api/agent/investigate/{ticket_id}/stream")
+async def stream_ticket_investigation(
+    ticket_id: str, request: InvestigateRequest
+) -> StreamingResponse:
+    return _stream_agent_workflow(
+        lambda agent: agent.investigate(ticket_id, write_back=request.write_back)
+    )
 
 
 @app.post("/api/demo/reset")

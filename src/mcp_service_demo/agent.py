@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -38,6 +39,7 @@ class ToolEvent:
     summary: str
     duration_ms: int
     result: Any | None = None
+    event_id: str = ""
 
 
 @dataclass
@@ -78,10 +80,23 @@ class AgentResult:
 
 
 class DemoAgent:
-    def __init__(self, settings: Settings, broker: MCPBroker):
+    def __init__(
+        self,
+        settings: Settings,
+        broker: MCPBroker,
+        on_event: Callable[[ToolEvent], Awaitable[None] | None] | None = None,
+    ):
         self.settings = settings
         self.broker = broker
         self.splunk = SplunkMCPAdapter(settings, broker)
+        self.on_event = on_event
+
+    async def _emit_event(self, event: ToolEvent) -> None:
+        if self.on_event is None:
+            return
+        emitted = self.on_event(event)
+        if asyncio.iscoroutine(emitted):
+            await emitted
 
     async def _call(
         self,
@@ -92,33 +107,48 @@ class DemoAgent:
         title: str | None = None,
     ) -> Any:
         started = time.perf_counter()
-        try:
-            result = await self.broker.call(server, tool, arguments)
-        except Exception as exc:
-            timeline.append(
-                ToolEvent(
-                    server=server,
-                    tool=tool,
-                    title=title or tool.replace("_", " ").title(),
-                    arguments=arguments,
-                    status="error",
-                    summary=str(exc),
-                    duration_ms=int((time.perf_counter() - started) * 1000),
-                )
-            )
-            raise
-        timeline.append(
+        event_id = f"{server}:{tool}:{time.monotonic_ns()}"
+        await self._emit_event(
             ToolEvent(
                 server=server,
                 tool=tool,
                 title=title or tool.replace("_", " ").title(),
                 arguments=arguments,
-                status="complete",
-                summary=self._result_summary(tool, result),
-                duration_ms=int((time.perf_counter() - started) * 1000),
-                result=result,
+                status="running",
+                summary="Waiting for the MCP server",
+                duration_ms=0,
+                event_id=event_id,
             )
         )
+        try:
+            result = await self.broker.call(server, tool, arguments)
+        except Exception as exc:
+            event = ToolEvent(
+                server=server,
+                tool=tool,
+                title=title or tool.replace("_", " ").title(),
+                arguments=arguments,
+                status="error",
+                summary=str(exc),
+                duration_ms=int((time.perf_counter() - started) * 1000),
+                event_id=event_id,
+            )
+            timeline.append(event)
+            await self._emit_event(event)
+            raise
+        event = ToolEvent(
+            server=server,
+            tool=tool,
+            title=title or tool.replace("_", " ").title(),
+            arguments=arguments,
+            status="complete",
+            summary=self._result_summary(tool, result),
+            duration_ms=int((time.perf_counter() - started) * 1000),
+            result=result,
+            event_id=event_id,
+        )
+        timeline.append(event)
+        await self._emit_event(event)
         return result
 
     @staticmethod
@@ -614,8 +644,27 @@ class DemoAgent:
                         ticket_id=ticket_id,
                     )
 
+            final = await client.responses.create(
+                model=self.settings.openai_model,
+                instructions=(
+                    instructions
+                    + "\nThe operation-sequencing budget is complete. Do not request more tools; "
+                    "provide the best final answer from the evidence already returned."
+                ),
+                input=current_input,
+                max_output_tokens=self.settings.openai_max_output_tokens,
+                previous_response_id=previous_response_id,
+            )
+            return AgentResult(
+                message=final.output_text or "Investigation complete.",
+                mode="openai",
+                timeline=timeline,
+                ticket_updated=ticket_updated,
+                ticket_id=ticket_id,
+            )
+
         return AgentResult(
-            message="The tool-call limit was reached. Review the completed evidence below.",
+            message="Investigation complete. Review the sourced evidence below.",
             mode="openai",
             timeline=timeline,
             ticket_updated=ticket_updated,

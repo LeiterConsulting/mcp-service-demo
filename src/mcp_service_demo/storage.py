@@ -54,6 +54,8 @@ class DemoStore:
                     requester TEXT NOT NULL,
                     impact TEXT NOT NULL,
                     urgency TEXT NOT NULL,
+                    assignment_group TEXT NOT NULL DEFAULT 'Digital Operations',
+                    escalation_level TEXT NOT NULL DEFAULT 'Standard',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -88,6 +90,19 @@ class DemoStore:
                     ON events(trace_id);
                 """
             )
+            ticket_columns = {
+                row[1] for row in connection.execute("PRAGMA table_info(tickets)").fetchall()
+            }
+            if "assignment_group" not in ticket_columns:
+                connection.execute(
+                    "ALTER TABLE tickets ADD COLUMN assignment_group TEXT NOT NULL "
+                    "DEFAULT 'Digital Operations'"
+                )
+            if "escalation_level" not in ticket_columns:
+                connection.execute(
+                    "ALTER TABLE tickets ADD COLUMN escalation_level TEXT NOT NULL "
+                    "DEFAULT 'Standard'"
+                )
 
     def ensure_seeded(self) -> None:
         self.initialize()
@@ -135,6 +150,8 @@ class DemoStore:
                 "Store Operations",
                 "High — online revenue path",
                 "High",
+                "Commerce Operations",
+                "Standard",
                 (anchor - timedelta(minutes=16)).isoformat(),
                 (anchor - timedelta(minutes=11)).isoformat(),
             ),
@@ -149,6 +166,8 @@ class DemoStore:
                 "Merchandising",
                 "Low — batch process only",
                 "Low",
+                "Supply Operations",
+                "Standard",
                 (anchor - timedelta(hours=3, minutes=8)).isoformat(),
                 (anchor - timedelta(minutes=48)).isoformat(),
             ),
@@ -163,6 +182,8 @@ class DemoStore:
                 "Finance Systems",
                 "None — informational",
                 "Low",
+                "Finance Operations",
+                "Standard",
                 (anchor - timedelta(hours=7, minutes=24)).isoformat(),
                 (anchor - timedelta(hours=2, minutes=17)).isoformat(),
             ),
@@ -171,8 +192,8 @@ class DemoStore:
             """
             INSERT INTO tickets(
                 id, title, description, service, priority, status, assignee, requester,
-                impact, urgency, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                impact, urgency, assignment_group, escalation_level, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             tickets,
         )
@@ -407,6 +428,62 @@ class DemoStore:
             connection.execute(
                 "UPDATE tickets SET status = ?, updated_at = ? WHERE upper(id) = upper(?)",
                 (status, now, ticket_id),
+            )
+        return self.get_ticket(ticket_id) or {}
+
+    def assign_ticket(self, ticket_id: str, assignee: str) -> dict[str, Any]:
+        ticket = self.get_ticket(ticket_id)
+        normalized = assignee.strip()
+        if ticket is None:
+            raise KeyError(f"Ticket {ticket_id!r} was not found")
+        if not normalized or len(normalized) > 80:
+            raise ValueError("Assignee must be between 1 and 80 characters")
+        now = datetime.now(UTC).replace(microsecond=0).isoformat()
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE tickets SET assignee = ?, updated_at = ? WHERE upper(id) = upper(?)",
+                (normalized, now, ticket_id),
+            )
+            connection.execute(
+                """
+                INSERT INTO ticket_notes(ticket_id, kind, author, body, evidence_refs, created_at)
+                VALUES (?, 'system', 'Northstar Service Desk', ?, '[]', ?)
+                """,
+                (
+                    ticket["id"],
+                    f"Assignment changed from {ticket['assignee']} to {normalized}.",
+                    now,
+                ),
+            )
+        return self.get_ticket(ticket_id) or {}
+
+    def escalate_ticket(self, ticket_id: str, assignment_group: str, reason: str) -> dict[str, Any]:
+        ticket = self.get_ticket(ticket_id)
+        group = assignment_group.strip()
+        explanation = reason.strip()
+        if ticket is None:
+            raise KeyError(f"Ticket {ticket_id!r} was not found")
+        if not group or len(group) > 100:
+            raise ValueError("Assignment group must be between 1 and 100 characters")
+        if not explanation or len(explanation) > 240:
+            raise ValueError("Escalation reason must be between 1 and 240 characters")
+        now = datetime.now(UTC).replace(microsecond=0).isoformat()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE tickets
+                SET assignment_group = ?, escalation_level = 'Escalated',
+                    status = 'Investigating', updated_at = ?
+                WHERE upper(id) = upper(?)
+                """,
+                (group, now, ticket_id),
+            )
+            connection.execute(
+                """
+                INSERT INTO ticket_notes(ticket_id, kind, author, body, evidence_refs, created_at)
+                VALUES (?, 'system', 'Northstar Service Desk', ?, '[]', ?)
+                """,
+                (ticket["id"], f"Escalated to {group}. Reason: {explanation}", now),
             )
         return self.get_ticket(ticket_id) or {}
 

@@ -39,7 +39,7 @@ async def test_broker_discovers_and_calls_all_mcp_servers(tmp_path, monkeypatch)
         "catalog", "get_service_context", {"service": "checkout-api"}
     )
 
-    assert len(tools) == 11
+    assert len(tools) == 13
     assert {tool.server for tool in tools} == {"splunk", "tickets", "catalog"}
     assert health["state"] == "degraded"
     assert ticket["service"] == "checkout-api"
@@ -54,7 +54,12 @@ async def test_ticket_investigation_completes_the_cross_system_loop(tmp_path, mo
     store = DemoStore(database_path)
     store.reset()
     broker = MCPBroker({"splunk": splunk_mcp, "tickets": ticket_mcp, "catalog": catalog_mcp})
-    agent = DemoAgent(get_settings(), broker)
+    streamed = []
+
+    async def capture(event):
+        streamed.append(event)
+
+    agent = DemoAgent(get_settings(), broker, on_event=capture)
 
     result = await agent.investigate_ticket("INC-1042", write_back=True)
     updated = store.get_ticket("INC-1042")
@@ -87,6 +92,47 @@ async def test_ticket_investigation_completes_the_cross_system_loop(tmp_path, mo
         "evidence_refs_preserved": 5,
         "manual_rekeying": 0,
     }
+    assert [event.status for event in streamed[::2]] == ["running"] * 8
+    assert [event.status for event in streamed[1::2]] == ["complete"] * 8
+    assert all(
+        running.event_id == complete.event_id
+        for running, complete in zip(streamed[::2], streamed[1::2], strict=True)
+    )
+
+
+async def test_ticket_assignment_and_escalation_are_persistent_and_resettable(
+    tmp_path, monkeypatch
+):
+    database_path = tmp_path / "demo.db"
+    monkeypatch.setenv("DEMO_DATABASE_PATH", str(database_path))
+    store = DemoStore(database_path)
+    store.reset()
+    broker = MCPBroker({"tickets": ticket_mcp})
+
+    assigned = await broker.call(
+        "tickets", "assign_ticket", {"ticket_id": "INC-1042", "assignee": "Jordan Lee"}
+    )
+    escalated = await broker.call(
+        "tickets",
+        "escalate_ticket",
+        {
+            "ticket_id": "INC-1042",
+            "assignment_group": "Commerce Platform",
+            "reason": "Catalog routing confirmed by the operator.",
+        },
+    )
+
+    assert assigned["ticket"]["assignee"] == "Jordan Lee"
+    assert escalated["ticket"]["assignment_group"] == "Commerce Platform"
+    assert escalated["ticket"]["escalation_level"] == "Escalated"
+    assert "Catalog routing confirmed" in escalated["ticket"]["notes"][-1]["body"]
+
+    store.reset()
+    reset_ticket = store.get_ticket("INC-1042")
+    assert reset_ticket is not None
+    assert reset_ticket["assignee"] == "Maya Chen"
+    assert reset_ticket["assignment_group"] == "Commerce Operations"
+    assert reset_ticket["escalation_level"] == "Standard"
 
 
 async def test_guided_agent_uses_real_splunk_query_tool_when_available(tmp_path, monkeypatch):
@@ -492,6 +538,55 @@ async def test_llm_mode_uses_saved_endpoint_model_and_responses_api(tmp_path, mo
     assert captured["request"]["tool_choice"] == "auto"
     assert captured["request"]["parallel_tool_calls"] is True
     assert captured["request"]["max_output_tokens"] == 2000
+
+
+async def test_llm_finalizes_from_evidence_when_iteration_budget_is_used(tmp_path, monkeypatch):
+    monkeypatch.setenv("DEMO_DATABASE_PATH", str(tmp_path / "demo.db"))
+    settings = replace(
+        get_settings(),
+        agent_mode_preference="openai",
+        openai_api_key="demo-key",
+        openai_max_iterations=2,
+        openai_max_tool_calls=12,
+    )
+    requests = []
+
+    class FakeResponses:
+        async def create(self, **kwargs):
+            requests.append(kwargs)
+            if len(requests) <= 2:
+                call = SimpleNamespace(
+                    type="function_call",
+                    name="unavailable_demo_tool",
+                    arguments="{}",
+                    call_id=f"call-{len(requests)}",
+                )
+                return SimpleNamespace(output=[call], output_text="", id=f"resp-{len(requests)}")
+            return SimpleNamespace(
+                output=[], output_text="Evidence-backed final answer", id="final"
+            )
+
+    class FakeOpenAI:
+        def __init__(self, **_kwargs):
+            self.responses = FakeResponses()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+    class EmptyBroker:
+        async def list_tools(self):
+            return []
+
+    monkeypatch.setattr(agent_module, "AsyncOpenAI", FakeOpenAI)
+    result = await DemoAgent(settings, EmptyBroker()).chat("Investigate the incident")
+
+    assert result.message == "Evidence-backed final answer"
+    assert len(requests) == 3
+    assert "Do not request more tools" in requests[-1]["instructions"]
+    assert "tools" not in requests[-1]
 
 
 async def test_guided_mode_does_not_use_a_stored_llm_key(tmp_path, monkeypatch):
