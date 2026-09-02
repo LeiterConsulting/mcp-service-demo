@@ -53,7 +53,7 @@ Use a narrowly scoped demo account and keep its secrets in `.env`, which is igno
 
 ### Browser setup
 
-Start the demo, open **Splunk setup** in the header, and choose **Live Splunk**. The panel separates
+Start the demo, open **Setup → Splunk** in the header, and choose **Live Splunk**. The panel separates
 the three responsibilities:
 
 - **MCP transport** — Streamable HTTP endpoint, masked bearer token, TLS verification, and an
@@ -94,7 +94,7 @@ The defaults expect app `mcp_service_demo`, index `mcp_demo`, source type `mcp:d
 scenario `checkout-degradation-v1`. If these names are changed, update both the environment and
 the companion app configuration.
 
-Environment variables are defaults. Values saved through **Splunk setup** take precedence for the
+Environment variables are defaults. Values saved through **Setup → Splunk** take precedence for the
 MCP endpoint, MCP bearer token, data mode, REST connection, HEC connection, TLS settings, and CA
 paths. The CLI uses that same effective profile.
 

@@ -8,7 +8,7 @@
       content="A live demonstration of an agent using MCP to investigate Splunk telemetry and enrich a service ticket."
     />
     <title>MCP Service Demo</title>
-    <link rel="stylesheet" href="/static/styles.css?v=0.7.0" />
+    <link rel="stylesheet" href="/static/styles.css?v=0.8.0" />
   </head>
   <body>
     <div class="app-shell">
@@ -45,9 +45,12 @@
           <div class="briefing-wrap">
             <div class="hero-grid">
               <div class="hero-copy">
-                <div class="eyebrow" id="data-source-label"><span></span> Live protocol · Fixture telemetry</div>
+                <div class="hero-context">
+                  <div class="eyebrow" id="data-source-label"><span></span> Live protocol · Fixture telemetry</div>
+                  <button type="button" class="audience-badge" id="audience-badge" title="Change the presentation audience">Executive audience</button>
+                </div>
                 <h1 id="briefing-title">A governed agent.<br /><em>Across systems of record.</em></h1>
-                <p class="hero-lede">
+                <p class="hero-lede" id="hero-lede">
                   MCP turns approved enterprise capabilities into a coordinated operating layer. The agent
                   investigates, verifies, and acts across systems while each platform retains authority.
                 </p>
@@ -58,7 +61,7 @@
                 <div class="hero-proof">
                   <span><b id="hero-tool-count">—</b> live MCP tools</span>
                   <span><b>3</b> independent servers</span>
-                  <span><b>1</b> visible workflow</span>
+                  <span id="hero-proof-focus"><b>1</b> visible workflow</span>
                 </div>
               </div>
 
@@ -68,8 +71,8 @@
                   <div class="system-icon agent-icon">✦</div>
                   <div>
                     <span class="system-kicker">MCP host</span>
-                    <strong>Incident agent</strong>
-                    <small>Understands intent and chooses tools</small>
+                    <strong id="agent-system-title">Incident agent</strong>
+                    <small id="agent-system-description">Understands intent and chooses tools</small>
                   </div>
                 </article>
 
@@ -98,7 +101,7 @@
                     <div>
                       <span class="system-kicker">Read only</span>
                       <strong>Splunk Operations</strong>
-                      <small>Health · logs · baselines · traces</small>
+                      <small id="splunk-system-description">Health · logs · baselines · traces</small>
                     </div>
                     <span class="live-badge">Live</span>
                   </article>
@@ -107,7 +110,7 @@
                     <div>
                       <span class="system-kicker">Read + write</span>
                       <strong>Northstar Service Desk</strong>
-                      <small>Queues · tickets · work notes · status</small>
+                      <small id="desk-system-description">Queues · tickets · work notes · status</small>
                     </div>
                     <span class="live-badge">Live</span>
                   </article>
@@ -116,7 +119,7 @@
                     <div>
                       <span class="system-kicker">Read only</span>
                       <strong>Service Catalog</strong>
-                      <small>Owners · dependencies · runbooks</small>
+                      <small id="catalog-system-description">Owners · dependencies · runbooks</small>
                     </div>
                     <span class="live-badge">Live</span>
                   </article>
@@ -124,7 +127,7 @@
               </div>
             </div>
 
-            <section class="value-proof" aria-label="Employee outcomes">
+            <section class="value-proof" id="value-proof" aria-label="Audience value proof">
               <article><span>Reduce errors</span><b>No copy-and-paste evidence</b><small>Typed results move between systems without manual re-keying.</small></article>
               <article><span>Reduce time</span><b>One investigation path</b><small>Ownership, telemetry, and ticket updates happen in the employee's workflow.</small></article>
               <article><span>Time to innocence</span><b>Verify before escalating</b><small>Dependency health narrows the fault domain before another team is paged.</small></article>
@@ -135,9 +138,9 @@
               <article class="story-panel">
                 <div class="panel-heading">
                   <span class="step-number">Demo story</span>
-                  <h2>The complete incident path</h2>
+                  <h2 id="story-title">The complete incident path</h2>
                 </div>
-                <div class="story-steps">
+                <div class="story-steps" id="story-steps">
                   <div class="story-step">
                     <span>01</span>
                     <div><b>Establish the request</b><code>tickets.get_ticket</code><small>Read impact, service, priority, and employee context from the system of record.</small></div>
@@ -169,7 +172,7 @@
                 <div class="panel-heading inline">
                   <div>
                     <span class="step-number">Discovered at runtime</span>
-                    <h2>Available tools</h2>
+                    <h2 id="tool-section-title">Available tools</h2>
                   </div>
                   <span class="tool-count" id="tool-count">—</span>
                 </div>
@@ -186,8 +189,8 @@
             <div class="workspace-main chat-column">
               <header class="workspace-header">
                 <div>
-                  <span class="workspace-kicker">Interactive agent</span>
-                  <h1 id="agent-title">Operations copilot</h1>
+                  <span class="workspace-kicker" id="agent-kicker">Interactive agent</span>
+                  <h1 id="agent-title">MCP incident agent</h1>
                 </div>
                 <button class="mode-badge" id="agent-mode" type="button" title="Open agent settings">Guided MCP</button>
               </header>
@@ -203,7 +206,7 @@
                 <textarea id="chat-input" rows="1" placeholder="Ask about a service or ticket…"></textarea>
                 <button class="send-button" type="submit" aria-label="Send message">↑</button>
               </form>
-              <p class="composer-note">The activity panel shows every MCP tool the agent invokes.</p>
+              <p class="composer-note" id="composer-note">The activity panel shows every MCP tool the agent invokes.</p>
             </div>
 
             <aside class="activity-column">
@@ -501,6 +504,38 @@
 
           <section class="setup-panel demo-control-panel" data-setup-panel="demo" hidden>
             <div class="settings-body">
+              <section class="settings-section audience-section">
+                <div class="settings-section-heading">
+                  <div>
+                    <span class="settings-step">Presentation lens</span>
+                    <h3>Audience</h3>
+                  </div>
+                  <span class="settings-source" id="audience-active-status">Executive</span>
+                </div>
+                <p class="settings-help" id="audience-description">Business outcomes, accountable execution, and governed cross-system coordination.</p>
+                <div class="audience-options" role="radiogroup" aria-label="Demo audience">
+                  <label class="audience-option">
+                    <input type="radio" name="demo-audience" value="executive" checked />
+                    <span class="audience-icon">E</span>
+                    <span><b>Executive</b><small>Outcome, accountability, and decision velocity</small></span>
+                  </label>
+                  <label class="audience-option">
+                    <input type="radio" name="demo-audience" value="engineering" />
+                    <span class="audience-icon">{ }</span>
+                    <span><b>Engineering</b><small>Telemetry, traces, dependencies, and action</small></span>
+                  </label>
+                  <label class="audience-option">
+                    <input type="radio" name="demo-audience" value="security" />
+                    <span class="audience-icon">◇</span>
+                    <span><b>Security</b><small>Boundaries, provenance, authorization, and audit</small></span>
+                  </label>
+                  <label class="audience-option">
+                    <input type="radio" name="demo-audience" value="finance" />
+                    <span class="audience-icon">ƒ</span>
+                    <span><b>Finance</b><small>Business impact, effort, handoffs, and control</small></span>
+                  </label>
+                </div>
+              </section>
               <section class="settings-section demo-control-hero">
                 <div>
                   <span class="settings-step">Presentation state</span>
@@ -520,12 +555,12 @@
                 <section class="settings-section">
                   <span class="settings-step">Reset boundary</span>
                   <h3>Connections stay intact</h3>
-                  <div class="preserved-list"><span>✓ Splunk MCP and TLS</span><span>✓ HEC publisher</span><span>✓ LLM endpoint and key</span><span>✓ Agent tuning</span></div>
+                  <div class="preserved-list"><span>✓ Splunk MCP and TLS</span><span>✓ HEC publisher</span><span>✓ LLM endpoint and key</span><span>✓ Agent tuning</span><span>✓ Audience lens</span></div>
                 </section>
               </div>
             </div>
             <footer class="settings-footer">
-              <p>Reset affects synthetic scenario data only. Saved connection secrets remain encrypted and preserved.</p>
+              <p>Reset affects synthetic scenario data only. Saved connections and the selected audience remain preserved.</p>
             </footer>
           </section>
         </div>
@@ -534,7 +569,7 @@
       <dialog class="info-dialog" id="connections-dialog" aria-labelledby="connections-title">
         <div class="info-shell">
           <header class="info-header">
-            <div><span class="workspace-kicker">Live protocol topology</span><h2 id="connections-title">MCP connections</h2><p>Endpoints, health, permissions, and tools discovered by the agent host.</p></div>
+            <div><span class="workspace-kicker">Live protocol topology</span><h2 id="connections-title">MCP connections</h2><p id="connections-description">Endpoints, health, permissions, and tools discovered by the agent host.</p></div>
             <button type="button" class="settings-close" data-close-dialog="connections-dialog" aria-label="Close connections">×</button>
           </header>
           <div class="connections-overview" id="connections-overview"></div>
@@ -553,6 +588,6 @@
 
       <div class="toast-region" id="toast-region" aria-live="polite"></div>
     </div>
-    <script src="/static/app.js?v=0.7.0" defer></script>
+    <script src="/static/app.js?v=0.8.0" defer></script>
   </body>
 </html>

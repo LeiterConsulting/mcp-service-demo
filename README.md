@@ -11,7 +11,7 @@ A deliberately small demonstration of an AI agent using the Model Context Protoc
 
 The main story is one complete, visible loop:
 
-> An analyst opens `INC-1042`, clicks **Ask Splunk**, and watches the agent resolve ownership,
+> An analyst opens `INC-1042`, clicks **Investigate with MCP**, and watches the agent resolve ownership,
 > collect evidence, prove an implicated dependency is healthy, and write a sourced investigation
 > note back to the ticket.
 
@@ -57,6 +57,14 @@ and their discovered tools. Tool chips explain why each capability matters in th
 During an agent run, the protocol timeline streams tool selection and completion as it happens.
 The service desk also exposes catalog context, Splunk evidence links, and resettable assignment,
 escalation, and status controls so the full cross-system workflow is visible without leaving the ticket.
+
+**Setup → Demo controls → Audience** switches the complete presentation lens between Executive
+(default), Engineering, Security, and Finance. Each lens changes the briefing, architecture
+annotations, value proof, story, highlighted tools, agent prompts and response guidance, protocol
+detail, ticket framing, and outcome labels. The underlying incident, MCP permissions, and real
+operations stay unchanged, making it possible to tailor the conversation without presenting a
+different or less truthful demo. Audience selection is saved with connection settings and survives
+**Reset demo**.
 
 ### Docker alternative
 

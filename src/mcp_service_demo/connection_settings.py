@@ -15,6 +15,7 @@ from .config import Settings
 MASK = "***"
 _EDITABLE_FIELDS = {
     "agent_mode",
+    "demo_audience",
     "openai_base_url",
     "openai_model",
     "mcp_url",
@@ -218,6 +219,16 @@ class SplunkConnectionStore:
                 "max_parallel_tools": effective.openai_max_parallel_tools,
                 "request_timeout_seconds": effective.openai_timeout_seconds,
             },
+        }
+
+    def safe_export_demo(self) -> dict[str, Any]:
+        saved = self.load()
+        audience = str(saved.get("demo_audience", "executive")).strip().lower()
+        if audience not in {"executive", "engineering", "security", "finance"}:
+            audience = "executive"
+        return {
+            "audience": audience,
+            "source": "saved profile" if "demo_audience" in saved else "default",
         }
 
     def _merged_payload(self, update: Mapping[str, Any]) -> dict[str, Any]:

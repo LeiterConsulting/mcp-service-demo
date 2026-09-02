@@ -4,20 +4,26 @@ This is designed as an 8–10 minute customer conversation, not a feature tour.
 
 ## Before the room joins
 
-Open **Splunk setup**. Use **Test MCP endpoint** to confirm that the agent can discover the six
-Splunk tools. In fixture mode, **Test Splunk search** confirms the local scenario is ready. In live
+Open **Setup → Splunk**. Use **Test MCP endpoint** to confirm that the agent can discover the
+configured Splunk tools. In fixture mode, **Test Splunk search** confirms the local scenario is ready. In live
 mode, confirm the search test identifies the Splunk server and reports an active demo run. The
 panel keeps tokens masked, so it is safe to show the connection shape without displaying
 credentials.
 
-Use **Reset demo** shortly before presenting. The header reports when the active live run has aged
+Use **Setup → Demo controls → Reset demo** shortly before presenting. The header reports when the active live run has aged
 outside its incident window; resetting publishes a fresh run while preserving Splunk and LLM setup.
 
-Open **LLM setup** and choose the mode for this presentation. **Guided demo** produces the same
+Open **Setup → Agent & LLM** and choose the mode for this presentation. **Guided demo** produces the same
 tool sequence every time. **LLM-assisted** lets the configured model interpret the request and
 select focused incident operations backed by the tools discovered over MCP. The panel shows the
 Balanced execution profile so you can confirm the workflow has headroom for a complete
 investigation. Use **Test model** before enabling LLM-assisted mode.
+
+In **Setup → Demo controls**, choose the audience. **Executive** is the default. The selection
+changes the headline, value proof, architecture annotations, six-step story, tool emphasis,
+suggested agent prompts, ticket action language, result framing, and visual accent. It does not
+change the source data, MCP permissions, or allowed operations. The selected audience survives a
+demo reset.
 
 ## 1. Explain MCP in one minute
 
@@ -43,7 +49,8 @@ the header. Those labels are populated from runtime status rather than presenter
 
 ## 2. Show the investigation agent
 
-Open **Agent** and choose **Find the cause**.
+Open **Agent** and choose the prompt that matches the selected audience. For the default Executive
+view, use **Executive summary**. For the Engineering view, use **Find the failure**.
 
 Call attention to the MCP timeline immediately after submitting the request. It begins with intent
 and tool selection, then updates each operation from running to complete as the servers respond:
@@ -62,7 +69,8 @@ Optional follow-up: choose **Show my queue** to demonstrate that the same host d
 
 Reset the demo, then open **Service desk** and select `INC-1042`.
 
-Explain that the ticket contains only the customer's symptoms and business context. Click **Ask Splunk**.
+Explain that the ticket contains only the customer's symptoms and business context. Click the
+audience-specific primary action—for Executive, **Investigate with MCP**.
 
 The authorized six-step workflow:
 
@@ -86,6 +94,20 @@ End on the outcome strip and new work note. The strip makes four employee outcom
 - evidence references preserved in the system of record;
 - the implicated inventory team reaches innocence before an unnecessary escalation.
 
+## Audience pivots
+
+Use the same incident and execution path; change only the lens:
+
+- **Executive:** lead with material impact, accountable ownership, faster decision evidence, and a
+  completed system-of-record update. Keep implementation detail collapsed.
+- **Engineering:** expand Technical inputs when useful. Emphasize the baseline comparison,
+  dominant error, representative trace, healthy dependency, and mitigation path.
+- **Security:** open the connection inventory and a tool detail first. Emphasize read-only Splunk
+  and catalog access, controlled ticket writes, explicit intent, provenance, and visible activity.
+- **Finance:** focus on the revenue-critical path, reduced coordination effort, avoided false
+  handoffs, and accountable completion. Do not invent dollar savings; the demo intentionally uses
+  observed workflow measures only.
+
 ## 4. Connect it to the customer's environment
 
 Suggested close:
@@ -99,11 +121,12 @@ Suggested close:
 
 ## Reset between demonstrations
 
-Use **Reset demo** in the header, or run:
+Use **Setup → Demo controls → Reset demo**, or run:
 
 ```bash
 mcp-service-demo reset
 ```
 
-Reset restores the ticket queue and publishes a fresh scenario. It does not change **Splunk setup**
-or **LLM setup**, or remove saved MCP, HEC, REST, model, API-key, or TLS settings.
+Reset restores the ticket queue and publishes a fresh scenario. It does not change the saved
+audience, Splunk profile, or agent profile, or remove saved MCP, HEC, REST, model, API-key, or TLS
+settings.

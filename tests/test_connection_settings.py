@@ -126,6 +126,7 @@ def test_demo_reset_preserves_saved_splunk_profile(monkeypatch, tmp_path):
             "mcp_token": "saved-mcp-secret",
             "hec_token": "saved-hec-secret",
             "openai_api_key": "saved-llm-secret",
+            "demo_audience": "security",
         },
     )
     encrypted_before = connection_store.config_path.read_bytes()
@@ -138,6 +139,24 @@ def test_demo_reset_preserves_saved_splunk_profile(monkeypatch, tmp_path):
     assert connection_store.apply(base).splunk_mcp_token == "saved-mcp-secret"
     assert connection_store.apply(base).splunk_hec_token == "saved-hec-secret"
     assert connection_store.apply(base).openai_api_key == "saved-llm-secret"
+    assert connection_store.safe_export_demo()["audience"] == "security"
+
+
+def test_demo_audience_defaults_to_executive_and_persists(monkeypatch, tmp_path):
+    base = base_settings(monkeypatch, tmp_path)
+    connection_store = SplunkConnectionStore.for_settings(base)
+
+    assert connection_store.safe_export_demo() == {
+        "audience": "executive",
+        "source": "default",
+    }
+
+    connection_store.save(base, {"demo_audience": "finance"})
+
+    assert connection_store.safe_export_demo() == {
+        "audience": "finance",
+        "source": "saved profile",
+    }
 
 
 def test_legacy_profile_migrates_to_dedicated_settings_directory(monkeypatch, tmp_path):

@@ -6,7 +6,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import FastAPI, HTTPException
@@ -54,7 +54,7 @@ def _runtime_agent(on_event: Callable[[Any], Awaitable[None] | None] | None = No
 app = FastAPI(
     title="MCP Service Demo",
     description="Agent host and service-desk API for the Splunk MCP demonstration.",
-    version="0.7.0",
+    version="0.8.0",
 )
 
 static_dir = Path(__file__).parent / "static"
@@ -64,10 +64,16 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     ticket_id: str | None = None
+    audience: Literal["executive", "engineering", "security", "finance"] = "executive"
 
 
 class InvestigateRequest(BaseModel):
     write_back: bool = True
+    audience: Literal["executive", "engineering", "security", "finance"] = "executive"
+
+
+class DemoSettingsUpdate(BaseModel):
+    audience: Literal["executive", "engineering", "security", "finance"] = "executive"
 
 
 class TicketAssignmentUpdate(BaseModel):
@@ -124,8 +130,12 @@ class LLMConnectionUpdate(BaseModel):
 @app.get("/api/health")
 async def health() -> dict[str, Any]:
     runtime_settings = get_settings()
+    demo_settings = SplunkConnectionStore.for_settings(
+        get_environment_settings()
+    ).safe_export_demo()
     return {
         "status": "ok",
+        "demo_audience": demo_settings["audience"],
         "agent_mode": runtime_settings.agent_mode,
         "agent_mode_preference": runtime_settings.agent_mode_preference,
         "agent_model": runtime_settings.openai_model,
@@ -151,6 +161,27 @@ async def health() -> dict[str, Any]:
 async def get_llm_settings() -> dict[str, Any]:
     base = get_environment_settings()
     return SplunkConnectionStore.for_settings(base).safe_export_llm(base)
+
+
+@app.get("/api/settings/demo")
+async def get_demo_settings() -> dict[str, Any]:
+    base = get_environment_settings()
+    return SplunkConnectionStore.for_settings(base).safe_export_demo()
+
+
+@app.put("/api/settings/demo")
+async def update_demo_settings(update: DemoSettingsUpdate) -> dict[str, Any]:
+    base = get_environment_settings()
+    connection_store = SplunkConnectionStore.for_settings(base)
+    try:
+        connection_store.save(base, {"demo_audience": update.audience})
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "status": "success",
+        "message": f"{update.audience.title()} audience selected.",
+        "settings": connection_store.safe_export_demo(),
+    }
 
 
 @app.put("/api/settings/llm")
@@ -430,7 +461,7 @@ async def update_ticket_status(ticket_id: str, update: TicketStatusUpdate) -> di
 async def agent_chat(request: ChatRequest) -> dict[str, Any]:
     started = time.perf_counter()
     try:
-        result = await _runtime_agent().chat(request.message, request.ticket_id)
+        result = await _runtime_agent().chat(request.message, request.ticket_id, request.audience)
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -488,7 +519,7 @@ def _stream_agent_workflow(
 @app.post("/api/agent/chat/stream")
 async def stream_agent_chat(request: ChatRequest) -> StreamingResponse:
     return _stream_agent_workflow(
-        lambda agent: agent.chat(request.message, request.ticket_id)
+        lambda agent: agent.chat(request.message, request.ticket_id, request.audience)
     )
 
 
@@ -496,7 +527,11 @@ async def stream_agent_chat(request: ChatRequest) -> StreamingResponse:
 async def investigate_ticket(ticket_id: str, request: InvestigateRequest) -> dict[str, Any]:
     started = time.perf_counter()
     try:
-        result = await _runtime_agent().investigate(ticket_id, write_back=request.write_back)
+        result = await _runtime_agent().investigate(
+            ticket_id,
+            write_back=request.write_back,
+            audience=request.audience,
+        )
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -509,7 +544,11 @@ async def stream_ticket_investigation(
     ticket_id: str, request: InvestigateRequest
 ) -> StreamingResponse:
     return _stream_agent_workflow(
-        lambda agent: agent.investigate(ticket_id, write_back=request.write_back)
+        lambda agent: agent.investigate(
+            ticket_id,
+            write_back=request.write_back,
+            audience=request.audience,
+        )
     )
 
 

@@ -1,6 +1,8 @@
 const state = {
   view: "briefing",
   health: null,
+  audience: "executive",
+  demoSettings: null,
   splunkStatus: null,
   splunkSettings: null,
   llmSettings: null,
@@ -19,6 +21,217 @@ const state = {
   timeline: [],
   investigation: null,
   busy: false,
+};
+
+const audienceProfiles = {
+  executive: {
+    label: "Executive",
+    description: "Business outcomes, accountable execution, and governed cross-system coordination.",
+    hero: "A governed agent.<br><em>Across systems of record.</em>",
+    lede: "MCP turns approved enterprise capabilities into a coordinated operating layer. The agent investigates, verifies, and acts across systems while each platform retains authority.",
+    proofFocus: "visible workflow",
+    agentSystem: ["Incident coordination agent", "Chooses approved capabilities and preserves context"],
+    systems: {
+      splunk: "Operational evidence · health · change · traces",
+      tickets: "Employee workflow · accountability · durable action",
+      catalog: "Ownership · dependencies · escalation authority",
+    },
+    values: [
+      ["Reduce errors", "No copy-and-paste evidence", "Typed results move between systems without manual re-keying."],
+      ["Reduce time", "One investigation path", "Ownership, telemetry, and ticket updates happen in the employee's workflow."],
+      ["Time to innocence", "Verify before escalating", "Dependency health narrows the fault domain before another team is paged."],
+      ["Finish the work", "Write back with provenance", "The finding and its evidence land in the system of record."],
+    ],
+    storyTitle: "From report to governed action",
+    story: [
+      ["Establish the request", ["tickets.get_ticket"], "Ground the response in impact, priority, and the employee's system of record."],
+      ["Resolve accountability", ["catalog.get_service_context"], "Identify the owner, dependencies, escalation path, and approved runbook."],
+      ["Quantify materiality", ["splunk.get_service_health", "compare_service_baseline"], "Measure the current deviation instead of relying on the ticket description."],
+      ["Locate the failure", ["splunk.search_logs", "trace_request"], "Correlate errors and follow one failed request across the service path."],
+      ["Avoid a false escalation", ["get_service_health(inventory-api)"], "Verify the implicated dependency is healthy before involving another team."],
+      ["Complete the work", ["tickets.add_work_note"], "Return the finding, accountable action, and evidence to the system of record."],
+    ],
+    agent: {
+      kicker: "Executive workflow",
+      title: "MCP incident agent",
+      welcome: "I can coordinate the service desk, service catalog, and Splunk through governed MCP tools. Ask for the impact and accountable next action for **INC-1042**, or run the complete investigation.",
+      note: "The protocol panel makes the cross-system execution visible without overwhelming the business narrative.",
+      detailLabel: "Technical inputs",
+      prompts: [
+        ["Executive summary", "Give me an executive summary of INC-1042. Focus on impact, decision, and accountable next action."],
+        ["Business impact", "What business service is affected by INC-1042, how material is the degradation, and who owns the response?"],
+        ["Prove fault isolation", "Why is inventory-api not the likely fault domain for INC-1042?"],
+        ["Investigate + update", "Investigate INC-1042 and update the ticket"],
+      ],
+    },
+    toolSectionTitle: "Discovered capabilities",
+    relevantTools: ["get_ticket", "get_service_context", "splunk_run_query", "add_work_note", "update_ticket_status", "escalate_ticket"],
+    toolLens: "Connect the tool to faster, more accountable execution without replacing the authority of the source platform.",
+    connections: "Three independently governed systems coordinated through one visible protocol workflow.",
+    ticket: {
+      kicker: "MCP-powered coordination",
+      title: "Complete the response from this ticket",
+      description: "Gather evidence, verify responsibility, and return a sourced action without moving the employee between systems.",
+      primary: "Investigate with MCP",
+      outcomes: ["time to evidence", "systems coordinated", "sources preserved", "manual re-keying"],
+    },
+  },
+  engineering: {
+    label: "Engineering",
+    description: "Telemetry, baselines, traces, dependency verification, and precise technical action.",
+    hero: "Faster diagnosis.<br><em>Without integration glue.</em>",
+    lede: "MCP gives the agent typed access to operational context and actions. Engineers can move from a ticket to baselines, errors, traces, dependencies, and a durable work note in one workflow.",
+    proofFocus: "traceable execution path",
+    agentSystem: ["Engineering incident agent", "Selects focused operations and carries evidence forward"],
+    systems: {
+      splunk: "Metrics · baselines · error search · request traces",
+      tickets: "Incident context · work notes · assignment · state",
+      catalog: "Topology · ownership · dependency roles · runbook",
+    },
+    values: [
+      ["Diagnose faster", "Baseline before opinion", "Current behavior is compared with the preceding window before a cause is proposed."],
+      ["Trace precisely", "Follow one failed request", "A concrete trace connects the dominant error to the affected service path."],
+      ["Protect focus", "Test dependency health", "Evidence prevents an unnecessary handoff to a healthy downstream team."],
+      ["Close the loop", "Engineering evidence persists", "Metrics, trace, owner, runbook, and next action are written back together."],
+    ],
+    storyTitle: "The evidence-driven investigation",
+    story: [
+      ["Read incident context", ["tickets.get_ticket"], "Use the affected service and time window from the ticket instead of re-entering context."],
+      ["Load service topology", ["catalog.get_service_context"], "Resolve the owner, dependency roles, escalation route, and first-response runbook."],
+      ["Compare behavior", ["get_service_health", "compare_service_baseline"], "Quantify error-rate and latency movement around the reported start time."],
+      ["Correlate and trace", ["search_logs", "trace_request"], "Find the dominant failure and inspect one representative request path."],
+      ["Test the hypothesis", ["get_service_health(inventory-api)"], "Check the implicated dependency before deciding where the defect lives."],
+      ["Persist the diagnosis", ["tickets.add_work_note"], "Write the evidence set and mitigation path back to the incident record."],
+    ],
+    agent: {
+      kicker: "Engineering workflow",
+      title: "Evidence-driven incident agent",
+      welcome: "I can carry ticket context into service topology and live Splunk evidence through MCP. Ask me to compare **checkout-api** with baseline, trace a failure, or investigate **INC-1042** end to end.",
+      note: "Every operation remains inspectable; expand Technical inputs for exact tool arguments.",
+      detailLabel: "Technical inputs",
+      prompts: [
+        ["Compare baseline", "Compare checkout-api health with the preceding 30-minute baseline."],
+        ["Find the failure", "Why are checkout-api errors increasing? Trace a representative failed request."],
+        ["Check dependency", "Is inventory-api healthy, and what does that prove about the checkout-api fault domain?"],
+        ["Investigate + update", "Investigate INC-1042 and update the ticket"],
+      ],
+    },
+    toolSectionTitle: "Engineering capabilities",
+    relevantTools: ["splunk_run_query", "splunk_get_metadata", "splunk_get_knowledge_objects", "get_service_context", "get_ticket", "add_work_note"],
+    toolLens: "Show how a typed, discoverable operation replaces bespoke integration code while keeping inputs and results inspectable.",
+    connections: "Typed operational capabilities carry ticket and topology context into live telemetry without custom point-to-point glue.",
+    ticket: {
+      kicker: "MCP-powered diagnosis",
+      title: "Investigate with source evidence",
+      description: "Carry ticket context into topology, baseline, logs, and traces, then persist the technical diagnosis.",
+      primary: "Run MCP investigation",
+      outcomes: ["time to evidence", "systems queried", "evidence references", "manual re-keying"],
+    },
+  },
+  security: {
+    label: "Security",
+    description: "Capability boundaries, source provenance, explicit authorization, and durable audit evidence.",
+    hero: "Governed action.<br><em>Across trust boundaries.</em>",
+    lede: "MCP exposes explicit capabilities instead of ambient access. The agent can discover what is allowed, use read-only evidence sources, and make a controlled ticket write only when the workflow authorizes it.",
+    proofFocus: "governed execution trail",
+    agentSystem: ["Governed investigation agent", "Uses scoped tools with explicit read and write boundaries"],
+    systems: {
+      splunk: "Read-only evidence · scoped identity · structured results",
+      tickets: "Controlled writes · durable activity · workflow state",
+      catalog: "Read-only authority · ownership · approved runbooks",
+    },
+    values: [
+      ["Least privilege", "Capabilities, not ambient access", "The agent receives named operations with schemas and platform-owned permissions."],
+      ["Source grounded", "Claims follow evidence", "Ticket, catalog, and telemetry facts remain attributable to their systems of record."],
+      ["Explicit action", "Writes require intent", "Read-only investigation does not silently become a service-desk change."],
+      ["Reviewable", "Every operation is visible", "Tool, input, status, duration, and resulting ticket activity form a durable trail."],
+    ],
+    storyTitle: "The governed execution chain",
+    story: [
+      ["Establish authority", ["tickets.get_ticket"], "Read the incident record before using its context or claiming impact."],
+      ["Use an authoritative source", ["catalog.get_service_context"], "Resolve ownership and runbook through a read-only catalog capability."],
+      ["Query within boundary", ["splunk.splunk_run_query"], "Use the connected Splunk identity through a read-only MCP operation."],
+      ["Preserve provenance", ["search_logs", "trace_request"], "Carry evidence references forward rather than transcribing unsupported claims."],
+      ["Verify before routing", ["get_service_health(inventory-api)"], "Test the alternative hypothesis before escalating another trust domain."],
+      ["Authorize one write", ["tickets.add_work_note"], "Create a visible, resettable work note only after evidence collection and explicit intent."],
+    ],
+    agent: {
+      kicker: "Governed workflow",
+      title: "MCP control-aware agent",
+      welcome: "I can demonstrate the read and write boundaries across the service desk, catalog, and Splunk. Ask me to show the evidence chain or run **INC-1042** with an explicit ticket update.",
+      note: "Each timeline entry labels its access boundary; technical inputs remain available on demand.",
+      detailLabel: "Inputs and audit detail",
+      prompts: [
+        ["Show boundaries", "Explain the MCP read and write boundaries available for INC-1042 before taking action."],
+        ["Trace provenance", "Investigate INC-1042 read-only and explain the provenance of each conclusion."],
+        ["Verify authorization", "Which ticket action is authorized when I ask to investigate and update INC-1042?"],
+        ["Investigate + audit", "Investigate INC-1042 and update the ticket with sourced evidence"],
+      ],
+    },
+    toolSectionTitle: "Capabilities and boundaries",
+    relevantTools: ["splunk_get_user_info", "splunk_get_indexes", "splunk_get_metadata", "get_ticket", "get_service_context", "splunk_run_query", "add_work_note"],
+    toolLens: "Identify the source authority, access mode, input contract, and durable evidence produced by this capability.",
+    connections: "The topology makes trust boundaries explicit: two read-only evidence sources and one controlled system-of-record write surface.",
+    ticket: {
+      kicker: "Governed MCP action",
+      title: "Act through explicit capabilities",
+      description: "Read authoritative context, collect sourced evidence, and perform a visible ticket write only with explicit intent.",
+      primary: "Investigate with audit trail",
+      outcomes: ["time to evidence", "authorized systems", "sources preserved", "manual re-keying"],
+    },
+  },
+  finance: {
+    label: "Finance",
+    description: "Material service impact, coordination effort, avoided handoffs, and accountable completion.",
+    hero: "Less incident overhead.<br><em>More accountable execution.</em>",
+    lede: "MCP reduces the coordination tax around operational work. One agent can gather evidence, find the accountable team, avoid a false escalation, and complete the ticket without inventing financial estimates.",
+    proofFocus: "measurable workflow",
+    agentSystem: ["Operational value agent", "Coordinates evidence, responsibility, and completion"],
+    systems: {
+      splunk: "Service impact · degradation window · change evidence",
+      tickets: "Work queue · accountability · completion record",
+      catalog: "Business criticality · ownership · escalation path",
+    },
+    values: [
+      ["Protect the revenue path", "Materiality first", "The workflow connects technical degradation to the affected business service."],
+      ["Reduce coordination effort", "One context-preserving path", "Employees stop moving and re-keying evidence between separate systems."],
+      ["Avoid false handoffs", "Verify before escalating", "A healthy dependency is cleared before another team absorbs incident work."],
+      ["Preserve accountability", "Action lands in the record", "Owner, evidence, recommendation, and status remain reviewable in the ticket."],
+    ],
+    storyTitle: "From business impact to accountable action",
+    story: [
+      ["Identify material impact", ["tickets.get_ticket"], "Start with the priority, affected revenue path, requester, and elapsed time."],
+      ["Find accountability", ["catalog.get_service_context"], "Resolve the business service, owner, on-call route, and approved response plan."],
+      ["Measure the deviation", ["get_service_health", "compare_service_baseline"], "Replace subjective urgency with current and baseline service evidence."],
+      ["Reduce investigation labor", ["search_logs", "trace_request"], "Use the same context to locate the failure without another manual handoff."],
+      ["Avoid misallocated effort", ["get_service_health(inventory-api)"], "Clear a healthy dependency before consuming another team's capacity."],
+      ["Make execution accountable", ["tickets.add_work_note"], "Return the evidence, owner, next action, and status to the business record."],
+    ],
+    agent: {
+      kicker: "Operational value workflow",
+      title: "MCP value demonstration",
+      welcome: "I can show how MCP reduces incident coordination work across the service desk, catalog, and Splunk. Ask for the business impact, accountable owner, or the complete **INC-1042** workflow.",
+      note: "The demo reports observed workflow outcomes and avoids unsupported dollar-value claims.",
+      detailLabel: "Supporting inputs",
+      prompts: [
+        ["Business impact", "Summarize the material business impact and accountable owner for INC-1042."],
+        ["Avoided handoff", "What evidence prevents an unnecessary escalation to the inventory-api team?"],
+        ["Workflow value", "Explain which manual coordination steps MCP removes in the INC-1042 investigation."],
+        ["Investigate + update", "Investigate INC-1042 and update the ticket"],
+      ],
+    },
+    toolSectionTitle: "Value-enabling capabilities",
+    relevantTools: ["get_ticket", "list_my_tickets", "get_service_context", "splunk_run_query", "add_work_note", "assign_ticket", "escalate_ticket"],
+    toolLens: "Explain which manual handoff or re-keying step this capability removes and where accountability remains.",
+    connections: "Three systems remain independently owned while MCP reduces the labor required to coordinate evidence and action between them.",
+    ticket: {
+      kicker: "MCP-powered execution",
+      title: "Reduce coordination overhead",
+      description: "Connect business impact, evidence, ownership, and completion without adding unsupported financial claims.",
+      primary: "Run accountable workflow",
+      outcomes: ["time to decision evidence", "systems coordinated", "audit-ready sources", "manual re-keying"],
+    },
+  },
 };
 
 const toolNarratives = {
@@ -91,6 +304,91 @@ const toolNarratives = {
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
+function audienceProfile() {
+  return audienceProfiles[state.audience] || audienceProfiles.executive;
+}
+
+function renderPromptRow() {
+  const profile = audienceProfile();
+  $("#prompt-row").innerHTML = profile.agent.prompts
+    .map(
+      ([label, prompt]) =>
+        `<button type="button" data-prompt="${escapeHtml(prompt)}">${escapeHtml(label)}</button>`,
+    )
+    .join("");
+  $$('[data-prompt]', $("#prompt-row")).forEach((button) =>
+    button.addEventListener("click", () => sendChat(button.dataset.prompt)),
+  );
+}
+
+function renderAudience(audience, { resetChat = false } = {}) {
+  state.audience = audienceProfiles[audience] ? audience : "executive";
+  const profile = audienceProfile();
+  document.body.dataset.audience = state.audience;
+  document.title = `MCP Service Demo · ${profile.label}`;
+  $("#audience-badge").textContent = `${profile.label} audience`;
+  $("#briefing-title").innerHTML = profile.hero;
+  $("#hero-lede").textContent = profile.lede;
+  $("#hero-proof-focus").innerHTML = `<b>1</b> ${escapeHtml(profile.proofFocus)}`;
+  $("#agent-system-title").textContent = profile.agentSystem[0];
+  $("#agent-system-description").textContent = profile.agentSystem[1];
+  $("#splunk-system-description").textContent = profile.systems.splunk;
+  $("#desk-system-description").textContent = profile.systems.tickets;
+  $("#catalog-system-description").textContent = profile.systems.catalog;
+  $("#value-proof").innerHTML = profile.values
+    .map(
+      ([kicker, title, description]) =>
+        `<article><span>${escapeHtml(kicker)}</span><b>${escapeHtml(title)}</b><small>${escapeHtml(description)}</small></article>`,
+    )
+    .join("");
+  $("#story-title").textContent = profile.storyTitle;
+  $("#story-steps").innerHTML = profile.story
+    .map(
+      ([title, tools, description], index) => `
+        <div class="story-step">
+          <span>${String(index + 1).padStart(2, "0")}</span>
+          <div><b>${escapeHtml(title)}</b>${tools.map((tool) => `<code>${escapeHtml(tool)}</code>`).join("")}<small>${escapeHtml(description)}</small></div>
+        </div>`,
+    )
+    .join("");
+  $("#tool-section-title").textContent = profile.toolSectionTitle;
+  $("#agent-kicker").textContent = profile.agent.kicker;
+  $("#agent-title").textContent = profile.agent.title;
+  $("#composer-note").textContent = profile.agent.note;
+  $("#connections-description").textContent = profile.connections;
+  $("#audience-active-status").textContent = profile.label;
+  $("#audience-description").textContent = profile.description;
+  const audienceInput = $(`input[name="demo-audience"][value="${state.audience}"]`);
+  if (audienceInput) audienceInput.checked = true;
+  if (resetChat) {
+    state.chat = [{ role: "agent", text: profile.agent.welcome, mode: `${profile.label.toLowerCase()} lens` }];
+  } else if (state.chat.length === 1 && state.chat[0].mode === "ready") {
+    state.chat[0].text = profile.agent.welcome;
+    state.chat[0].mode = `${profile.label.toLowerCase()} lens`;
+  }
+  renderPromptRow();
+  renderToolCatalog();
+  renderChat();
+  if (state.activeTicket) renderTicket();
+}
+
+async function saveAudience(audience) {
+  if (!audienceProfiles[audience] || state.busy || audience === state.audience) return;
+  const previous = state.audience;
+  renderAudience(audience, { resetChat: true });
+  try {
+    const result = await api("/api/settings/demo", {
+      method: "PUT",
+      body: JSON.stringify({ audience }),
+    });
+    state.demoSettings = result.settings;
+    toast(`${audienceProfile().label} audience applied · scenario and connections unchanged`);
+  } catch (error) {
+    renderAudience(previous, { resetChat: true });
+    toast(`Audience could not be saved: ${error.message}`, true);
+  }
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
@@ -144,7 +442,7 @@ function richText(value = "") {
   return escapeHtml(value)
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/`(.+?)`/g, "<code>$1</code>")
-    .replace(/^• (.+)$/gm, "<span class=\"bullet-line\">• $1</span>")
+    .replace(/^(?:•|-) (.+)$/gm, "<span class=\"bullet-line\">• $1</span>")
     .replace(/\n/g, "<br>");
 }
 
@@ -169,13 +467,21 @@ function navigate(view) {
 }
 
 function renderToolCatalog() {
+  const relevant = audienceProfile().relevantTools;
+  const tools = state.tools
+    .slice()
+    .sort((left, right) => {
+      const leftIndex = relevant.indexOf(left.name);
+      const rightIndex = relevant.indexOf(right.name);
+      return (leftIndex < 0 ? 999 : leftIndex) - (rightIndex < 0 ? 999 : rightIndex);
+    });
   $("#tool-count").textContent = state.tools.length || "—";
   $("#hero-tool-count").textContent = state.tools.length || "—";
-  $("#mini-tool-list").innerHTML = state.tools.length
-    ? state.tools
+  $("#mini-tool-list").innerHTML = tools.length
+    ? tools
         .map(
           (tool) =>
-            `<button type="button" class="mini-tool ${escapeHtml(tool.server)}" data-tool-server="${escapeHtml(tool.server)}" data-tool-name="${escapeHtml(tool.name)}">${escapeHtml(tool.server)}.${escapeHtml(tool.name)}</button>`,
+            `<button type="button" class="mini-tool ${escapeHtml(tool.server)} ${relevant.includes(tool.name) ? "audience-relevant" : ""}" data-tool-server="${escapeHtml(tool.server)}" data-tool-name="${escapeHtml(tool.name)}" title="${relevant.includes(tool.name) ? `Relevant to the ${audienceProfile().label} narrative` : "Discovered MCP capability"}">${escapeHtml(tool.server)}.${escapeHtml(tool.name)}</button>`,
         )
         .join("")
     : '<span class="mini-tool">MCP servers unavailable</span>';
@@ -238,6 +544,7 @@ function openToolDetail(server, name) {
   $("#tool-dialog-title").textContent = `${server}.${name}`;
   $("#tool-detail").innerHTML = `
     <section class="tool-detail-intro"><span class="settings-step">What the system exposes</span><p>${escapeHtml(tool.description)}</p></section>
+    <div class="tool-audience-lens"><span>${escapeHtml(audienceProfile().label)} lens</span><p>${escapeHtml(audienceProfile().toolLens)}</p></div>
     <div class="tool-detail-grid">
       <article><span>Why it matters here</span><p>${escapeHtml(narrative.usefulness)}</p></article>
       <article><span>When it is used</span><p>${escapeHtml(narrative.when)}</p></article>
@@ -254,7 +561,7 @@ function renderConnections() {
     catalog: "Operational authority: service ownership, dependencies, escalation path, and runbooks.",
   };
   const icons = { splunk: ["S", "splunk-icon"], tickets: ["N", "desk-icon"], catalog: ["C", "catalog-icon"] };
-  $("#connections-overview").innerHTML = state.connections
+  $("#connections-overview").innerHTML = `<div class="connection-audience-lens"><span>${escapeHtml(audienceProfile().label)} lens</span>${escapeHtml(audienceProfile().connections)}</div>` + state.connections
     .map((server) => {
       const tools = state.tools.filter((tool) => tool.server === server.name);
       const [letter, iconClass] = icons[server.name] || ["M", "agent-icon"];
@@ -368,6 +675,11 @@ function switchSetupTab(tab) {
   });
 }
 
+function renderDemoSettings(settings) {
+  state.demoSettings = settings;
+  renderAudience(settings?.audience || "executive");
+}
+
 async function openSetup(tab = "splunk") {
   const dialog = $("#setup-dialog");
   $("#connection-result").hidden = true;
@@ -375,12 +687,14 @@ async function openSetup(tab = "splunk") {
   switchSetupTab(tab);
   if (!dialog.open) dialog.showModal();
   try {
-    const [splunkSettings, llmSettings] = await Promise.all([
+    const [splunkSettings, llmSettings, demoSettings] = await Promise.all([
       api("/api/settings/splunk"),
       api("/api/settings/llm"),
+      api("/api/settings/demo"),
     ]);
     renderSplunkSettings(splunkSettings);
     renderLLMSettings(llmSettings);
+    renderDemoSettings(demoSettings);
   } catch (error) {
     showConnectionResult(`Settings could not be loaded: ${error.message}`, true);
   }
@@ -569,7 +883,19 @@ function renderChat() {
   renderTimeline(state.timeline);
 }
 
+function toolAccessLabel(event) {
+  if (event.server === "agent") return "Agent selection";
+  if (
+    event.server === "tickets" &&
+    ["add_work_note", "update_ticket_status", "assign_ticket", "escalate_ticket"].includes(event.tool)
+  ) {
+    return "Controlled write";
+  }
+  return "Read only";
+}
+
 function renderTimeline(events) {
+  const profile = audienceProfile();
   const empty = $("#timeline-empty");
   const timeline = $("#tool-timeline");
   empty.style.display = events.length ? "none" : "block";
@@ -583,9 +909,12 @@ function renderTimeline(events) {
               <b>${escapeHtml(event.title)}</b>
               <span>${event.status === "running" ? "In progress" : `${escapeHtml(event.duration_ms)} ms`}</span>
             </div>
-            <div class="tool-server">${escapeHtml(event.server)}.${escapeHtml(event.tool)}</div>
+            <div class="tool-event-identity"><div class="tool-server">${escapeHtml(event.server)}.${escapeHtml(event.tool)}</div><span class="tool-access">${escapeHtml(toolAccessLabel(event))}</span></div>
             <p class="tool-summary">${escapeHtml(event.summary)}</p>
-            <div class="tool-args">${escapeHtml(JSON.stringify(event.arguments))}</div>
+            <details class="tool-args-disclosure">
+              <summary>${escapeHtml(profile.agent.detailLabel)}</summary>
+              <div class="tool-args">${escapeHtml(JSON.stringify(event.arguments, null, 2))}</div>
+            </details>
           </div>
         </article>`,
     )
@@ -632,7 +961,11 @@ async function sendChat(message) {
   try {
     const result = await streamApi("/api/agent/chat/stream", {
       method: "POST",
-      body: JSON.stringify({ message: message.trim(), ticket_id: state.activeTicket?.id || null }),
+      body: JSON.stringify({
+        message: message.trim(),
+        ticket_id: state.activeTicket?.id || null,
+        audience: state.audience,
+      }),
     }, (streamMessage) => {
       applyStreamMessage(streamMessage);
       renderTimeline(state.timeline);
@@ -749,13 +1082,14 @@ function noteLabel(kind) {
 function renderTicket() {
   const ticket = state.activeTicket;
   if (!ticket) return;
+  const ticketProfile = audienceProfile().ticket;
   const outcomes = state.investigation?.outcomes;
   const outcomeStrip = outcomes
     ? `<div class="outcome-strip" aria-label="Investigation outcomes">
-        <div><b>${escapeHtml(outcomes.elapsed_seconds ?? "—")}s</b><span>time to evidence</span></div>
-        <div><b>${escapeHtml(outcomes.systems_coordinated)}</b><span>systems coordinated</span></div>
-        <div><b>${escapeHtml(outcomes.evidence_refs_preserved)}</b><span>sources preserved</span></div>
-        <div><b>${escapeHtml(outcomes.manual_rekeying)}</b><span>manual re-keying</span></div>
+        <div><b>${escapeHtml(outcomes.elapsed_seconds ?? "—")}s</b><span>${escapeHtml(ticketProfile.outcomes[0])}</span></div>
+        <div><b>${escapeHtml(outcomes.systems_coordinated)}</b><span>${escapeHtml(ticketProfile.outcomes[1])}</span></div>
+        <div><b>${escapeHtml(outcomes.evidence_refs_preserved)}</b><span>${escapeHtml(ticketProfile.outcomes[2])}</span></div>
+        <div><b>${escapeHtml(outcomes.manual_rekeying)}</b><span>${escapeHtml(ticketProfile.outcomes[3])}</span></div>
       </div>`
     : "";
   const investigation = state.investigation
@@ -791,7 +1125,7 @@ function renderTicket() {
       <div class="ticket-breadcrumb">My work / <b>${escapeHtml(ticket.id)}</b></div>
       <div class="ticket-actions">
         <button class="button secondary small" id="open-agent-button">Open in agent</button>
-        <button class="button primary ask-splunk ${state.busy ? "loading" : ""}" id="ask-splunk-button" ${state.busy ? "disabled" : ""}>${state.busy ? "Investigating…" : "Ask Splunk"}</button>
+        <button class="button primary ask-splunk ${state.busy ? "loading" : ""}" id="ask-splunk-button" ${state.busy ? "disabled" : ""}>${state.busy ? "Investigating…" : escapeHtml(ticketProfile.primary)}</button>
       </div>
     </div>
     ${outcomeStrip}
@@ -819,11 +1153,11 @@ function renderTicket() {
       </div>
       <aside>
         <div class="agent-callout">
-          <span class="workspace-kicker">MCP-powered action</span>
-          <h4>Work across systems from this ticket</h4>
-          <p>Choose a full three-system investigation or a focused read-only action.</p>
+          <span class="workspace-kicker">${escapeHtml(ticketProfile.kicker)}</span>
+          <h4>${escapeHtml(ticketProfile.title)}</h4>
+          <p>${escapeHtml(ticketProfile.description)}</p>
           <div class="agent-actions">
-            <button class="button ${state.busy ? "loading" : ""}" id="ask-splunk-side" ${state.busy ? "disabled" : ""}>${state.busy ? "Investigating…" : "Investigate and enrich"}</button>
+            <button class="button ${state.busy ? "loading" : ""}" id="ask-splunk-side" ${state.busy ? "disabled" : ""}>${state.busy ? "Investigating…" : escapeHtml(ticketProfile.primary)}</button>
             <button class="button secondary-action" id="check-health-side">Check current health</button>
             <button class="button secondary-action" id="show-catalog-side">View owner and runbook</button>
           </div>
@@ -910,7 +1244,7 @@ async function askSplunk() {
   try {
     const result = await streamApi(`/api/agent/investigate/${encodeURIComponent(state.activeTicket.id)}/stream`, {
       method: "POST",
-      body: JSON.stringify({ write_back: true }),
+      body: JSON.stringify({ write_back: true, audience: state.audience }),
     }, (streamMessage) => {
       applyStreamMessage(streamMessage);
       if (streamMessage.type === "tool") renderTicket();
@@ -949,12 +1283,16 @@ async function resetDemo() {
     state.investigation = null;
     state.timeline = [];
     state.chat = [
-      { role: "agent", text: "The demo has been reset. **INC-1042** is ready for a fresh investigation.", mode: "scenario ready" },
+      {
+        role: "agent",
+        text: `The demo has been reset for the **${audienceProfile().label}** audience. **INC-1042** is ready for a fresh investigation.`,
+        mode: "scenario ready",
+      },
     ];
     await refreshTickets("INC-1042");
     renderChat();
     renderConnectionStatus();
-    toast("Demo scenario restored · Splunk and LLM setup preserved");
+    toast(`Demo scenario restored · ${audienceProfile().label} audience and connections preserved`);
   } catch (error) {
     toast(error.message, true);
   } finally {
@@ -974,6 +1312,7 @@ function toast(message, isError = false) {
 function bindEvents() {
   $$('[data-view]').forEach((button) => button.addEventListener("click", () => navigate(button.dataset.view)));
   $("#setup-button").addEventListener("click", () => openSetup("splunk"));
+  $("#audience-badge").addEventListener("click", () => openSetup("demo"));
   $("#agent-mode").addEventListener("click", () => openSetup("llm"));
   $("#setup-close").addEventListener("click", () => $("#setup-dialog").close());
   $("#setup-dialog").addEventListener("click", (event) => {
@@ -988,6 +1327,9 @@ function bindEvents() {
   $("#test-llm-button").addEventListener("click", testLLMConnection);
   $("#llm-settings-form").addEventListener("submit", saveLLMConnection);
   $("#reset-button").addEventListener("click", resetDemo);
+  $$('input[name="demo-audience"]').forEach((input) =>
+    input.addEventListener("change", () => saveAudience(input.value)),
+  );
   $("#connection-pill").addEventListener("click", openConnections);
   $$('[data-close-dialog]').forEach((button) =>
     button.addEventListener("click", () => $("#" + button.dataset.closeDialog).close()),
@@ -1022,12 +1364,13 @@ async function bootstrap() {
   bindEvents();
   const initialView = ["briefing", "agent", "desk"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "briefing";
   try {
-    const [health, toolPayload, ticketPayload, splunkStatus, splunkSettings] = await Promise.all([
+    const [health, toolPayload, ticketPayload, splunkStatus, splunkSettings, demoSettings] = await Promise.all([
       api("/api/health"),
       api("/api/mcp/tools"),
       api("/api/tickets"),
       api("/api/splunk/status").catch((error) => ({ ready: false, error: error.message })),
       api("/api/settings/splunk"),
+      api("/api/settings/demo"),
     ]);
     state.health = health;
     state.splunkStatus = splunkStatus;
@@ -1035,6 +1378,7 @@ async function bootstrap() {
     state.tools = toolPayload.tools;
     state.tickets = ticketPayload.tickets;
     renderSplunkSettings(splunkSettings);
+    renderDemoSettings(demoSettings);
     renderConnectionStatus();
     renderAgentMode();
     renderToolCatalog();

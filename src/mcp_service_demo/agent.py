@@ -191,7 +191,12 @@ class DemoAgent:
 
         return call
 
-    async def investigate(self, ticket_id: str, write_back: bool = True) -> AgentResult:
+    async def investigate(
+        self,
+        ticket_id: str,
+        write_back: bool = True,
+        audience: str = "executive",
+    ) -> AgentResult:
         """Run the ticket action through the selected agent mode."""
         if self.settings.agent_mode == "openai":
             if write_back:
@@ -211,10 +216,19 @@ class DemoAgent:
                     "request when a trace ID is available. This is read-only: "
                     "do not update the ticket or make any other change."
                 )
-            return await self.chat(instruction, ticket_id)
-        return await self.investigate_ticket(ticket_id, write_back=write_back)
+            return await self.chat(instruction, ticket_id, audience)
+        return await self.investigate_ticket(
+            ticket_id,
+            write_back=write_back,
+            audience=audience,
+        )
 
-    async def investigate_ticket(self, ticket_id: str, write_back: bool = True) -> AgentResult:
+    async def investigate_ticket(
+        self,
+        ticket_id: str,
+        write_back: bool = True,
+        audience: str = "executive",
+    ) -> AgentResult:
         timeline: list[ToolEvent] = []
         ticket = await self._call(
             "tickets", "get_ticket", {"ticket_id": ticket_id}, timeline, "Read ticket context"
@@ -317,12 +331,37 @@ class DemoAgent:
                 f"{dependency_metrics['p95_ms']} ms p95, narrowing the fault to the "
                 f"{service} client path rather than the dependency service."
             )
-        message = (
-            f"I found a material degradation in **{service}**: {metrics['error_rate_pct']}% errors "
-            f"and {metrics['p95_ms']} ms p95 latency in the last 30 minutes. The repeated failure "
-            "is `inventory-client connection pool exhausted`."
-            f"{change_text}{innocence_text}{action_text}"
-        )
+        audience = self._normalize_audience(audience)
+        if audience == "security":
+            message = (
+                f"The governed workflow read evidence from three authorized systems and found "
+                f"**{service}** degraded at {metrics['error_rate_pct']}% errors and "
+                f"{metrics['p95_ms']} ms p95. The repeated failure is "
+                "`inventory-client connection pool exhausted`."
+                f"{innocence_text}{action_text} No source system was bypassed."
+            )
+        elif audience == "finance":
+            message = (
+                f"The online revenue path is materially degraded in **{service}** at "
+                f"{metrics['error_rate_pct']}% errors and {metrics['p95_ms']} ms p95. "
+                "MCP coordinated the evidence, ownership, and ticket update without manual "
+                f"re-keying.{innocence_text}{action_text}"
+            )
+        elif audience == "engineering":
+            message = (
+                f"**{service}** is degraded at {metrics['error_rate_pct']}% errors and "
+                f"{metrics['p95_ms']} ms p95. The dominant failure is "
+                "`inventory-client connection pool exhausted`."
+                f"{change_text}{innocence_text}{action_text}"
+            )
+        else:
+            message = (
+                f"I found a material degradation in **{service}**: "
+                f"{metrics['error_rate_pct']}% errors and {metrics['p95_ms']} ms p95 latency in "
+                "the last 30 minutes. The repeated failure is "
+                "`inventory-client connection pool exhausted`."
+                f"{change_text}{innocence_text}{action_text}"
+            )
         return AgentResult(
             message=message,
             mode="guided",
@@ -434,28 +473,43 @@ class DemoAgent:
                 return str(dependency["service"])
         return None
 
-    async def chat(self, message: str, ticket_id: str | None = None) -> AgentResult:
+    async def chat(
+        self,
+        message: str,
+        ticket_id: str | None = None,
+        audience: str = "executive",
+    ) -> AgentResult:
+        audience = self._normalize_audience(audience)
         if self.settings.agent_mode == "openai":
             try:
-                return await self._openai_chat(message, ticket_id)
+                return await self._openai_chat(message, ticket_id, audience)
             except Exception as exc:
                 # A live demo should remain usable if the model endpoint is unavailable.
                 logger.warning("LLM workflow unavailable; using guided fallback: %s", exc)
-                result = await self._guided_chat(message, ticket_id)
+                result = await self._guided_chat(message, ticket_id, audience)
                 result.message += (
                     "\n\n_Live model unavailable; completed with the guided MCP workflow._"
                 )
                 return result
-        return await self._guided_chat(message, ticket_id)
+        return await self._guided_chat(message, ticket_id, audience)
 
-    async def _guided_chat(self, message: str, ticket_id: str | None = None) -> AgentResult:
+    async def _guided_chat(
+        self,
+        message: str,
+        ticket_id: str | None = None,
+        audience: str = "executive",
+    ) -> AgentResult:
         text = message.lower()
         detected_ticket = ticket_id or self._ticket_id(message)
         authorized_write = self._write_authorized(text)
         if detected_ticket and any(
             word in text for word in ("investigate", "splunk", "enrich", "update", "analyze")
         ):
-            return await self.investigate_ticket(detected_ticket, write_back=authorized_write)
+            return await self.investigate_ticket(
+                detected_ticket,
+                write_back=authorized_write,
+                audience=audience,
+            )
 
         timeline: list[ToolEvent] = []
         if "queue" in text or "my tickets" in text:
@@ -553,13 +607,22 @@ class DemoAgent:
             response += " A checkout-api deployment appears immediately before the degraded window."
         return AgentResult(message=response, mode="guided", timeline=timeline)
 
-    async def _openai_chat(self, message: str, ticket_id: str | None) -> AgentResult:
+    async def _openai_chat(
+        self,
+        message: str,
+        ticket_id: str | None,
+        audience: str,
+    ) -> AgentResult:
         discovered_tools = await self.broker.list_tools()
         allow_writes = self._write_authorized(message.lower())
         tools = self._agent_tools(discovered_tools, allow_writes=allow_writes)
         tool_lookup = {tool.agent_name: tool for tool in tools}
         openai_tools = [self._openai_tool(tool) for tool in tools]
-        instructions = self._openai_instructions(ticket_id=ticket_id, allow_writes=allow_writes)
+        instructions = self._openai_instructions(
+            ticket_id=ticket_id,
+            allow_writes=allow_writes,
+            audience=audience,
+        )
         timeline: list[ToolEvent] = []
         current_input: Any = message
         previous_response_id: str | None = None
@@ -835,7 +898,13 @@ class DemoAgent:
             "output": json.dumps(content, default=str),
         }
 
-    def _openai_instructions(self, *, ticket_id: str | None, allow_writes: bool) -> str:
+    def _openai_instructions(
+        self,
+        *,
+        ticket_id: str | None,
+        allow_writes: bool,
+        audience: str = "executive",
+    ) -> str:
         context = f" The user is viewing ticket {ticket_id}." if ticket_id else ""
         write_policy = (
             "Ticket writes are authorized for this request. Add one evidence-based work note only "
@@ -845,6 +914,31 @@ class DemoAgent:
             if allow_writes
             else "This request is read-only. No ticket write tools are available."
         )
+        audience_guidance = {
+            "executive": (
+                "The audience is executive. Lead with business-service impact, the decision, "
+                "accountability, and the governed cross-system outcome. Keep implementation "
+                "details subordinate to the evidence. Prefer four short bullets: impact, "
+                "decision, accountable team, and sourced completion."
+            ),
+            "engineering": (
+                "The audience is engineering. Be precise about the baseline, error pattern, "
+                "trace, dependency health, recent change, and the next technical action."
+            ),
+            "security": (
+                "The audience is security and risk. Emphasize read versus write boundaries, "
+                "evidence provenance, explicit write authorization, and the durable audit trail. "
+                "Do not claim controls that the tool results do not prove. Prefer four short "
+                "bullets: authority, provenance, action boundary, and audit outcome."
+            ),
+            "finance": (
+                "The audience is finance. Emphasize material business-service impact, reduced "
+                "coordination effort, avoided false escalation, and accountable completion. "
+                "Never invent dollar estimates or savings. Prefer four short bullets: "
+                "materiality, coordination or avoided handoff, accountable team, and next "
+                "decision. Use technical metrics only as concise support for materiality."
+            ),
+        }[self._normalize_audience(audience)]
         return (
             "You are the incident-response agent in a live MCP demonstration. The company and "
             "telemetry are synthetic, but every displayed tool operation uses the configured MCP "
@@ -869,17 +963,29 @@ class DemoAgent:
             "next when the available operations can answer the request.\n"
             "- Cite evidence_ref values when available. Clearly distinguish observations from "
             "inference. Never claim a ticket changed unless a write tool succeeded.\n"
+            "- A service is never the accountable owner. Use owner_team from the service catalog "
+            "for accountability, and name the service separately as the affected system.\n"
+            "- Existing ticket notes are context, not proof of a write in the current run. If no "
+            "write tool succeeded in this run, explicitly say that this run made no ticket "
+            "change.\n"
             "- Keep the final answer under 180 words. Lead with one finding sentence, then use no "
             "more than five bullets total for ownership, metrics/baseline, fault isolation, "
             "recommended action, and ticket update status. Do not add a second analysis section, "
             "ask a follow-up "
             "question, or print raw SPL unless the user asks for it.\n\n"
-            f"{write_policy}{context}\n"
+            f"{audience_guidance}\n\n{write_policy}{context}\n"
             f"Demo data contract: app={self.settings.splunk_app}, "
             f"index={self.settings.splunk_index}, "
             f"sourcetype={self.settings.splunk_sourcetype}, "
             f"scenario_id={self.settings.splunk_scenario_id}."
         )
+
+    @staticmethod
+    def _normalize_audience(audience: str) -> str:
+        normalized = str(audience or "executive").strip().lower()
+        if normalized not in {"executive", "engineering", "security", "finance"}:
+            return "executive"
+        return normalized
 
     @staticmethod
     def _agent_tools(discovered: list[MCPTool], *, allow_writes: bool) -> list[MCPTool]:

@@ -321,6 +321,29 @@ def test_chat_write_tools_require_explicit_authorization():
     assert DemoAgent._write_authorized("update the ticket read-only") is False
 
 
+def test_llm_instructions_apply_the_selected_audience_without_changing_policy(tmp_path):
+    settings = replace(get_settings(), database_path=tmp_path / "demo.db")
+    agent = DemoAgent(settings, object())
+
+    security = agent._openai_instructions(
+        ticket_id="INC-1042",
+        allow_writes=True,
+        audience="security",
+    )
+    finance = agent._openai_instructions(
+        ticket_id="INC-1042",
+        allow_writes=False,
+        audience="finance",
+    )
+
+    assert "read versus write boundaries" in security
+    assert "Ticket writes are authorized" in security
+    assert "A service is never the accountable owner" in security
+    assert "Never invent dollar estimates" in finance
+    assert "No ticket write tools are available" in finance
+    assert "this run made no ticket change" in finance
+
+
 def test_llm_tool_surface_is_focused_strict_and_discovery_backed():
     discovered = [
         MCPTool(
@@ -598,7 +621,7 @@ async def test_guided_mode_does_not_use_a_stored_llm_key(tmp_path, monkeypatch):
     )
     agent = DemoAgent(settings, object())
 
-    async def guided(message, ticket_id):
+    async def guided(message, ticket_id, _audience):
         return SimpleNamespace(message=message, mode="guided", ticket_id=ticket_id)
 
     async def unexpected_llm(*_args):

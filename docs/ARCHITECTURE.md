@@ -8,6 +8,7 @@ Browser
    │ REST
    ▼
 Agent host :8100
+   ├── Audience lens ──► Executive · Engineering · Security · Finance
    ├── Guided router or Responses-compatible LLM
    ├── Streamable HTTP MCP ──► Splunk Operations :8101
    │                              ├── fixture ──► local event rows
@@ -48,6 +49,20 @@ immediately, followed by running and completed MCP tool events carrying stable e
 result retains the same shape as the non-streaming API, so the UI can show honest protocol progress
 without changing the agent's evidence or authorization rules.
 
+## Audience presentation layer
+
+The audience selector is presentation state, not an authorization role. Executive is the default;
+Engineering, Security, and Finance apply different narrative, visual, prompt, tool-emphasis, and
+response guidance to the same incident and MCP capabilities. The browser sends the selected lens
+with agent requests so LLM-assisted answers use the appropriate level of detail and decision frame.
+The server prompt still enforces the same read-before-claim, source-provenance, explicit-write, and
+no-invented-evidence policies for every audience.
+
+The selected audience is stored with the encrypted demo profile and survives scenario reset. It
+does not add tools, broaden permissions, change source data, or alter the deterministic work note.
+Technical tool inputs are collapsed by default in the protocol timeline and remain available on
+demand, keeping the executive view concise without removing engineering or audit detail.
+
 ## Deterministic live data
 
 The scenario loader is part of this repository, not part of the agent. It resets the ticket store,
@@ -61,19 +76,19 @@ rehearsals.
 
 ## Runtime connection settings
 
-Environment variables establish the default connection profile. The **Splunk setup** panel can save an
+Environment variables establish the default connection profile. The **Setup → Splunk** panel can save an
 encrypted override containing the agent's Splunk MCP endpoint and bearer token, the data mode,
 management API connection, HEC connection, TLS verification, and optional CA bundle paths. Tokens
 are masked in API responses, and blank secret fields preserve the existing value.
 
-The separate **LLM setup** panel selects Guided or LLM-assisted mode and stores a
+The **Setup → Agent & LLM** panel selects Guided or LLM-assisted mode and stores a
 Responses-compatible endpoint, model, and encrypted API key. In LLM-assisted mode the model
 interprets intent and selects a focused set of strict incident operations. Those operations are
 enabled only when their backing MCP capability is discovered. With Splunk's generic
 `splunk_run_query` tool, the adapter generates deterministic, scenario-scoped SPL and returns the
 same structured health, baseline, error, and trace results as the bundled tools. MCP servers still
 own the evidence and action boundaries.
-Both chat and **Ask Splunk** resolve this choice at request time, so switching modes does not require
+Both chat and the service-desk MCP investigation resolve this choice at request time, so switching modes does not require
 a restart. A failed model call falls back to the guided workflow for demo continuity.
 
 The default **Balanced** profile allows eight model turns and twelve tool calls, runs at most three
@@ -104,8 +119,8 @@ Synthetic by design:
 - the company, users, services, tickets, and incident event content;
 - the Northstar service-desk visual design;
 - the Northstar service catalog records;
-- the `splunk://` evidence references, which are portable references rather than clickable Splunk
-  deep links.
+- the portable `splunk://` evidence-reference format. The browser converts supported references
+  into clickable searches against the configured Splunk Web host.
 
 ## Integration seams
 
