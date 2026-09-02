@@ -10,9 +10,14 @@ mode, confirm the search test identifies the Splunk server and reports an active
 panel keeps tokens masked, so it is safe to show the connection shape without displaying
 credentials.
 
+Use **Reset demo** shortly before presenting. The header reports when the active live run has aged
+outside its incident window; resetting publishes a fresh run while preserving Splunk and LLM setup.
+
 Open **LLM setup** and choose the mode for this presentation. **Guided demo** produces the same
 tool sequence every time. **LLM-assisted** lets the configured model interpret the request and
-select from the tools discovered over MCP. Use **Test model** before enabling LLM-assisted mode.
+select focused incident operations backed by the tools discovered over MCP. The panel shows the
+Balanced execution profile so you can confirm the workflow has headroom for a complete
+investigation. Use **Test model** before enabling LLM-assisted mode.
 
 ## 1. Explain MCP in one minute
 

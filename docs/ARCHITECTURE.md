@@ -48,9 +48,19 @@ are masked in API responses, and blank secret fields preserve the existing value
 
 The separate **LLM setup** panel selects Guided or LLM-assisted mode and stores a
 Responses-compatible endpoint, model, and encrypted API key. In LLM-assisted mode the model
-interprets intent and selects tools; MCP servers still own the evidence and action boundaries.
+interprets intent and selects a focused set of strict incident operations. Those operations are
+enabled only when their backing MCP capability is discovered. With Splunk's generic
+`splunk_run_query` tool, the adapter generates deterministic, scenario-scoped SPL and returns the
+same structured health, baseline, error, and trace results as the bundled tools. MCP servers still
+own the evidence and action boundaries.
 Both chat and **Ask Splunk** resolve this choice at request time, so switching modes does not require
 a restart. A failed model call falls back to the guided workflow for demo continuity.
+
+The default **Balanced** profile allows eight model turns and twelve tool calls, runs at most three
+independent reads concurrently, limits each model request to 60 seconds with one retry, and caps
+model output at 2,000 tokens. Individual tool failures are returned to the model as evidence rather
+than restarting the entire workflow. These values can be changed with the `OPENAI_*` environment
+variables documented in `.env.example` without adding presenter-facing complexity.
 
 The agent resolves the MCP transport profile whenever it discovers or invokes a tool. The web host
 and local Splunk MCP server also resolve their effective platform profile from the same encrypted

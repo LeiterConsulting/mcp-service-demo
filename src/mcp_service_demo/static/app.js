@@ -86,13 +86,17 @@ function renderConnectionStatus() {
   const pill = $("#connection-pill");
   const live = state.health?.splunk_data_mode === "live";
   const splunkReady = state.splunkStatus?.ready;
+  const scenarioFresh = state.splunkStatus?.fresh !== false;
+  const presentationReady = splunkReady && scenarioFresh;
   pill.classList.remove("online", "offline");
-  pill.classList.add(splunkReady ? "online" : "offline");
-  pill.querySelector("span:last-child").textContent = splunkReady
+  pill.classList.add(presentationReady ? "online" : "offline");
+  pill.querySelector("span:last-child").textContent = presentationReady
     ? `2 MCP servers · Splunk ${live ? "live" : "fixture"}`
-    : live
-      ? "Splunk needs a scenario"
-      : "MCP servers online";
+    : splunkReady && !scenarioFresh
+      ? "Reset demo to refresh Splunk data"
+      : live
+        ? "Splunk needs a scenario"
+        : "MCP servers online";
   $("#data-source-label").innerHTML = live
     ? "<span></span> Live protocol · Real Splunk endpoint"
     : "<span></span> Live protocol · Fixture telemetry";
@@ -285,6 +289,10 @@ function renderLLMSettings(settings) {
   $("#clear-llm-api-key").checked = false;
   $("#llm-active-status").textContent =
     settings.active_mode === "openai" ? `Active · ${settings.model}` : "Active · Guided";
+  const tuning = settings.tuning || {};
+  $("#llm-tuning-profile").textContent = tuning.max_tool_calls
+    ? `${tuning.profile || "Balanced"} · ${tuning.max_tool_calls} calls · ${tuning.max_parallel_tools} parallel`
+    : "balanced limits";
 }
 
 function llmSettingsPayload() {

@@ -31,9 +31,11 @@ mcp-service-demo run
 Open [http://127.0.0.1:8100](http://127.0.0.1:8100).
 
 An LLM is optional. Open **LLM setup** to switch between the deterministic Guided agent and an
-LLM-assisted agent that selects and sequences the same discovered MCP tools. The setup supports an
-OpenAI or Responses-compatible endpoint, model, encrypted API key, and connection test. Guided
-mode remains the presentation-safe fallback if the model endpoint is unavailable.
+LLM-assisted agent that selects and sequences focused incident operations backed by the discovered
+MCP capabilities. The setup supports an OpenAI or Responses-compatible endpoint, model, encrypted
+API key, and connection test. A balanced runtime profile bounds retries and downstream concurrency
+while leaving enough turns and tool calls for the complete ticket workflow. Guided mode remains the
+presentation-safe fallback if the model endpoint is unavailable.
 
 The default `SPLUNK_DATA_MODE=fixture` is the zero-dependency path. To use a real endpoint,
 install the companion Splunk app, open **Splunk setup** in the demo header, enter the MCP and HEC

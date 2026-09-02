@@ -120,6 +120,7 @@ class SplunkMCPAdapter:
                 f"sourcetype={_spl_literal(self.settings.splunk_sourcetype)} "
                 f"scenario_id={_spl_literal(self.settings.splunk_scenario_id)} earliest=-7d "
                 "| stats max(_time) as latest count as events by demo_run_id "
+                "| eval age_minutes=round((now()-latest)/60,1) "
                 "| sort 0 - latest | head 1"
             ),
             title="Find the active demo run",
@@ -127,8 +128,11 @@ class SplunkMCPAdapter:
             row_limit=1,
         )
         active = rows[0] if rows else {}
+        age_minutes = _number(active.get("age_minutes"))
         return {
             "ready": bool(active.get("demo_run_id")),
+            "fresh": bool(active.get("demo_run_id")) and age_minutes <= 15,
+            "age_minutes": age_minutes,
             "mode": "live",
             "source": self.settings.splunk_mcp_url,
             "index": self.settings.splunk_index,

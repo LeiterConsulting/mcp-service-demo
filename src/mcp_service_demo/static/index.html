@@ -8,7 +8,7 @@
       content="A live demonstration of an agent using MCP to investigate Splunk telemetry and enrich a service ticket."
     />
     <title>MCP Service Demo</title>
-    <link rel="stylesheet" href="/static/styles.css?v=0.4.0" />
+    <link rel="stylesheet" href="/static/styles.css?v=0.5.0" />
   </head>
   <body>
     <div class="app-shell">
@@ -386,7 +386,7 @@
             <div>
               <span class="workspace-kicker">Agent runtime</span>
               <h2 id="llm-settings-title">Agent &amp; LLM setup</h2>
-              <p>Choose a presentation-safe guided flow or let a model select the same MCP tools.</p>
+              <p>Choose a presentation-safe guided flow or let a model select focused MCP-backed incident operations.</p>
             </div>
             <button type="button" class="settings-close" id="llm-settings-close" aria-label="Close LLM settings">×</button>
           </header>
@@ -409,7 +409,7 @@
                 <label class="source-option">
                   <input type="radio" name="agent-mode" value="openai" />
                   <span class="source-option-dot"></span>
-                  <span><b>LLM-assisted</b><small>The model interprets intent and selects discovered MCP tools.</small></span>
+                  <span><b>LLM-assisted</b><small>The model interprets intent and selects focused operations backed by discovered MCP tools.</small></span>
                 </label>
               </div>
             </section>
@@ -457,6 +457,7 @@
                 <span>read-before-claim</span>
                 <span>explicit write intent</span>
                 <span>guided fallback</span>
+                <span id="llm-tuning-profile">balanced limits</span>
               </div>
             </section>
 
@@ -475,6 +476,6 @@
 
       <div class="toast-region" id="toast-region" aria-live="polite"></div>
     </div>
-    <script src="/static/app.js?v=0.4.0" defer></script>
+    <script src="/static/app.js?v=0.5.0" defer></script>
   </body>
 </html>

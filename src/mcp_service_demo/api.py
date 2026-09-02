@@ -43,7 +43,7 @@ def _runtime_agent() -> DemoAgent:
 app = FastAPI(
     title="MCP Service Demo",
     description="Agent host and service-desk API for the Splunk MCP demonstration.",
-    version="0.4.0",
+    version="0.5.0",
 )
 
 static_dir = Path(__file__).parent / "static"
@@ -106,6 +106,13 @@ async def health() -> dict[str, Any]:
         "agent_mode_preference": runtime_settings.agent_mode_preference,
         "agent_model": runtime_settings.openai_model,
         "llm_configured": runtime_settings.llm_configured,
+        "agent_tuning": {
+            "profile": "balanced",
+            "max_iterations": runtime_settings.openai_max_iterations,
+            "max_tool_calls": runtime_settings.openai_max_tool_calls,
+            "max_parallel_tools": runtime_settings.openai_max_parallel_tools,
+            "request_timeout_seconds": runtime_settings.openai_timeout_seconds,
+        },
         "splunk_data_mode": runtime_settings.splunk_data_mode,
         "scenario": "checkout-degradation",
         "mcp_servers": {
@@ -217,11 +224,15 @@ async def test_splunk_settings(update: SplunkConnectionUpdate) -> dict[str, Any]
         else:
             candidate_broker = MCPBroker({"splunk": _splunk_mcp_target(candidate)})
             details = await SplunkMCPAdapter(candidate, candidate_broker).status()
-        scenario_message = (
-            f"Demo run {details['active_run_id']} is searchable."
-            if details.get("ready")
-            else "Connection works; publish the demo scenario before presenting."
-        )
+        if details.get("ready") and details.get("fresh", True):
+            scenario_message = f"Demo run {details['active_run_id']} is searchable and fresh."
+        elif details.get("ready"):
+            scenario_message = (
+                f"Demo run {details['active_run_id']} is searchable but outside its live incident "
+                "window; use Reset demo before presenting."
+            )
+        else:
+            scenario_message = "Connection works; publish the demo scenario before presenting."
         return {
             "status": "success",
             "message": f"Connected to Splunk. {scenario_message}",

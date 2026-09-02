@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import re
 import time
 from dataclasses import asdict, dataclass, field
@@ -13,6 +15,17 @@ from .mcp_client import MCPBroker, MCPTool
 from .splunk_mcp_adapter import SplunkCall, SplunkMCPAdapter
 
 WRITE_TOOLS = {"tickets__add_work_note", "tickets__update_ticket_status"}
+logger = logging.getLogger(__name__)
+
+
+def _object_schema(properties: dict[str, Any]) -> dict[str, Any]:
+    """Return the strict object shape required by Responses function tools."""
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": list(properties),
+        "additionalProperties": False,
+    }
 
 
 @dataclass
@@ -127,11 +140,24 @@ class DemoAgent:
     async def investigate(self, ticket_id: str, write_back: bool = True) -> AgentResult:
         """Run the ticket action through the selected agent mode."""
         if self.settings.agent_mode == "openai":
-            write_instruction = " and update the ticket" if write_back else " without updating it"
-            return await self.chat(
-                f"Investigate {ticket_id} with Splunk{write_instruction}",
-                ticket_id,
-            )
+            if write_back:
+                instruction = (
+                    f"Complete the investigation for {ticket_id}. Read the ticket, establish "
+                    "current service health over the last 30 minutes and compare it with the "
+                    "preceding 30-minute baseline. Find the dominant error and trace a failed "
+                    "request when a trace ID is available. Then update the "
+                    "ticket with a concise work note containing the findings, evidence references, "
+                    "and recommended next actions."
+                )
+            else:
+                instruction = (
+                    f"Complete the investigation for {ticket_id}. Read the ticket, establish "
+                    "current service health over the last 30 minutes and compare it with the "
+                    "preceding 30-minute baseline. Find the dominant error and trace a failed "
+                    "request when a trace ID is available. This is read-only: "
+                    "do not update the ticket or make any other change."
+                )
+            return await self.chat(instruction, ticket_id)
         return await self.investigate_ticket(ticket_id, write_back=write_back)
 
     async def investigate_ticket(self, ticket_id: str, write_back: bool = True) -> AgentResult:
@@ -282,8 +308,9 @@ class DemoAgent:
         if self.settings.agent_mode == "openai":
             try:
                 return await self._openai_chat(message, ticket_id)
-            except Exception:
+            except Exception as exc:
                 # A live demo should remain usable if the model endpoint is unavailable.
+                logger.warning("LLM workflow unavailable; using guided fallback: %s", exc)
                 result = await self._guided_chat(message, ticket_id)
                 result.message += (
                     "\n\n_Live model unavailable; completed with the guided MCP workflow._"
@@ -366,35 +393,33 @@ class DemoAgent:
         return AgentResult(message=response, mode="guided", timeline=timeline)
 
     async def _openai_chat(self, message: str, ticket_id: str | None) -> AgentResult:
-        all_tools = await self.broker.list_tools()
+        discovered_tools = await self.broker.list_tools()
         allow_writes = self._write_authorized(message.lower())
-        tools = [tool for tool in all_tools if allow_writes or tool.agent_name not in WRITE_TOOLS]
+        tools = self._agent_tools(discovered_tools, allow_writes=allow_writes)
         tool_lookup = {tool.agent_name: tool for tool in tools}
         openai_tools = [self._openai_tool(tool) for tool in tools]
-        context = f"\nThe user is viewing ticket {ticket_id}." if ticket_id else ""
-        instructions = (
-            "You are a concise incident-response agent in a live MCP demonstration. Discover facts "
-            "with tools before making operational claims. The telemetry is synthetic but tool "
-            "calls "
-            "are real. Cite evidence_ref values when available. Never imply a ticket was updated "
-            "unless a write tool succeeded. Use markdown sparingly."
-            f"{context}"
-        )
+        instructions = self._openai_instructions(ticket_id=ticket_id, allow_writes=allow_writes)
         timeline: list[ToolEvent] = []
         current_input: Any = message
         previous_response_id: str | None = None
         ticket_updated = False
+        tool_call_count = 0
 
         async with AsyncOpenAI(
             api_key=self.settings.openai_api_key,
             base_url=self.settings.openai_base_url,
+            timeout=self.settings.openai_timeout_seconds,
+            max_retries=self.settings.openai_max_retries,
         ) as client:
-            for _ in range(5):
+            for _ in range(self.settings.openai_max_iterations):
                 response = await client.responses.create(
                     model=self.settings.openai_model,
                     instructions=instructions,
                     input=current_input,
                     tools=openai_tools,
+                    tool_choice="auto",
+                    parallel_tool_calls=True,
+                    max_output_tokens=self.settings.openai_max_output_tokens,
                     previous_response_id=previous_response_id,
                 )
                 calls = [item for item in response.output if item.type == "function_call"]
@@ -406,28 +431,57 @@ class DemoAgent:
                         ticket_updated=ticket_updated,
                         ticket_id=ticket_id,
                     )
-                outputs = []
-                for call in calls:
-                    descriptor = tool_lookup[call.name]
-                    arguments = json.loads(call.arguments or "{}")
-                    result = await self._call(
-                        descriptor.server,
-                        descriptor.name,
-                        arguments,
-                        timeline,
-                        descriptor.title,
-                    )
-                    if call.name in WRITE_TOOLS:
-                        ticket_updated = True
+                remaining = self.settings.openai_max_tool_calls - tool_call_count
+                accepted_calls = calls[:remaining]
+                tool_call_count += len(accepted_calls)
+                outputs = await self._execute_model_calls(
+                    accepted_calls,
+                    tool_lookup,
+                    timeline,
+                )
+                ticket_updated = ticket_updated or any(
+                    output.get("write_succeeded", False) for output in outputs
+                )
+                for output in outputs:
+                    output.pop("write_succeeded", None)
+                for call in calls[remaining:]:
                     outputs.append(
                         {
                             "type": "function_call_output",
                             "call_id": call.call_id,
-                            "output": json.dumps(result, default=str),
+                            "output": json.dumps(
+                                {
+                                    "error": (
+                                        "Tool budget reached. Summarize the evidence already "
+                                        "collected."
+                                    )
+                                }
+                            ),
                         }
                     )
                 previous_response_id = response.id
                 current_input = outputs
+
+                if tool_call_count >= self.settings.openai_max_tool_calls:
+                    final = await client.responses.create(
+                        model=self.settings.openai_model,
+                        instructions=(
+                            instructions
+                            + "\nThe tool budget is complete. Do not request more tools; provide "
+                            "the "
+                            "best final answer from the evidence already returned."
+                        ),
+                        input=current_input,
+                        max_output_tokens=self.settings.openai_max_output_tokens,
+                        previous_response_id=previous_response_id,
+                    )
+                    return AgentResult(
+                        message=final.output_text or "Investigation complete.",
+                        mode="openai",
+                        timeline=timeline,
+                        ticket_updated=ticket_updated,
+                        ticket_id=ticket_id,
+                    )
 
         return AgentResult(
             message="The tool-call limit was reached. Review the completed evidence below.",
@@ -437,6 +491,314 @@ class DemoAgent:
             ticket_id=ticket_id,
         )
 
+    async def _execute_model_calls(
+        self,
+        calls: list[Any],
+        tool_lookup: dict[str, MCPTool],
+        timeline: list[ToolEvent],
+    ) -> list[dict[str, Any]]:
+        """Execute independent reads concurrently, while serializing any write batch."""
+        semaphore = asyncio.Semaphore(self.settings.openai_max_parallel_tools)
+
+        async def execute(call: Any) -> dict[str, Any]:
+            descriptor = tool_lookup.get(call.name)
+            if descriptor is None:
+                return self._model_tool_output(call.call_id, error="Unknown or unavailable tool")
+            try:
+                arguments = json.loads(call.arguments or "{}")
+                if not isinstance(arguments, dict):
+                    raise ValueError("Tool arguments must be a JSON object")
+            except (json.JSONDecodeError, ValueError) as exc:
+                return self._model_tool_output(call.call_id, error=str(exc))
+
+            try:
+                async with semaphore:
+                    result = await self._execute_agent_tool(descriptor, arguments, timeline)
+            except Exception as exc:
+                return self._model_tool_output(call.call_id, error=str(exc))
+            return {
+                **self._model_tool_output(call.call_id, result=result),
+                "write_succeeded": call.name in WRITE_TOOLS,
+            }
+
+        if any(call.name in WRITE_TOOLS for call in calls):
+            results = []
+            for call in calls:
+                results.append(await execute(call))
+            return results
+        return list(await asyncio.gather(*(execute(call) for call in calls)))
+
+    async def _execute_agent_tool(
+        self,
+        descriptor: MCPTool,
+        arguments: dict[str, Any],
+        timeline: list[ToolEvent],
+    ) -> Any:
+        if descriptor.server != "splunk":
+            return await self._call(
+                descriptor.server,
+                descriptor.name,
+                arguments,
+                timeline,
+                descriptor.title,
+            )
+
+        call = self._tracked_splunk_call(timeline)
+        if descriptor.name == "get_service_health":
+            return await self.splunk.get_service_health(
+                arguments["service"], arguments["minutes"], call=call
+            )
+        if descriptor.name == "compare_service_baseline":
+            return await self.splunk.compare_service_baseline(
+                arguments["service"], arguments["minutes"], call=call
+            )
+        if descriptor.name == "search_logs":
+            return await self.splunk.search_logs(
+                arguments["service"],
+                arguments["keywords"],
+                arguments["minutes"],
+                arguments["limit"],
+                call=call,
+            )
+        if descriptor.name == "trace_request":
+            return await self.splunk.trace_request(arguments["trace_id"], call=call)
+        raise ValueError(f"Unsupported Splunk incident operation: {descriptor.name}")
+
+    @staticmethod
+    def _model_tool_output(
+        call_id: str,
+        *,
+        result: Any | None = None,
+        error: str | None = None,
+    ) -> dict[str, Any]:
+        content = {"error": error} if error else result
+        return {
+            "type": "function_call_output",
+            "call_id": call_id,
+            "output": json.dumps(content, default=str),
+        }
+
+    def _openai_instructions(self, *, ticket_id: str | None, allow_writes: bool) -> str:
+        context = f" The user is viewing ticket {ticket_id}." if ticket_id else ""
+        write_policy = (
+            "Ticket writes are authorized for this request. Add one evidence-based work note only "
+            "after the investigation is complete; do not resolve the incident."
+            if allow_writes
+            else "This request is read-only. No ticket write tools are available."
+        )
+        return (
+            "You are the incident-response agent in a live MCP demonstration. The company and "
+            "telemetry are synthetic, but every displayed tool operation uses the configured MCP "
+            "connections. The application exposes a focused set of incident operations; Splunk "
+            "operations automatically scope searches to the active deterministic demo run. Never "
+            "invent raw SPL, field names, metrics, ticket state, or evidence.\n\n"
+            "Investigation policy:\n"
+            "- Read a ticket before using its service as context.\n"
+            "- For service health, call get_service_health. For a cause or full investigation, "
+            "also call compare_service_baseline and search_logs. These independent reads may be "
+            "requested together. Use a 30-minute window unless the user explicitly asks for "
+            "another period.\n"
+            "- If search_logs returns a trace_id, call trace_request once to confirm the affected "
+            "service path. Do not repeat a successful operation.\n"
+            "- Complete the investigation in this turn. Do not ask the user which search to run "
+            "next when the available operations can answer the request.\n"
+            "- Cite evidence_ref values when available. Clearly distinguish observations from "
+            "inference. Never claim a ticket changed unless a write tool succeeded.\n"
+            "- Keep the final answer under 180 words. Lead with one finding sentence, then use no "
+            "more than five bullets total for metrics, baseline, error/trace, recommended action, "
+            "and ticket update status. Do not add a second analysis section, ask a follow-up "
+            "question, or print raw SPL unless the user asks for it.\n\n"
+            f"{write_policy}{context}\n"
+            f"Demo data contract: app={self.settings.splunk_app}, "
+            f"index={self.settings.splunk_index}, "
+            f"sourcetype={self.settings.splunk_sourcetype}, "
+            f"scenario_id={self.settings.splunk_scenario_id}."
+        )
+
+    @staticmethod
+    def _agent_tools(discovered: list[MCPTool], *, allow_writes: bool) -> list[MCPTool]:
+        """Expose a focused, strict incident surface backed by discovered MCP capabilities."""
+        names = {(tool.server, tool.name) for tool in discovered}
+        supports_query = ("splunk", "splunk_run_query") in names
+        tools: list[MCPTool] = []
+
+        def add_if_supported(tool: MCPTool) -> None:
+            supported = (tool.server, tool.name) in names
+            if tool.server == "splunk":
+                supported = supported or supports_query
+            if supported:
+                tools.append(tool)
+
+        add_if_supported(
+            MCPTool(
+                server="tickets",
+                name="list_my_tickets",
+                title="Read assigned queue",
+                description=(
+                    "List the service-desk tickets assigned to an analyst, in priority order."
+                ),
+                input_schema=_object_schema(
+                    {"assignee": {"type": "string", "description": "Analyst name; use Maya Chen."}}
+                ),
+            )
+        )
+        add_if_supported(
+            MCPTool(
+                server="tickets",
+                name="get_ticket",
+                title="Read ticket context",
+                description="Read a ticket and its activity before investigating its service.",
+                input_schema=_object_schema(
+                    {"ticket_id": {"type": "string", "description": "Ticket ID such as INC-1042."}}
+                ),
+            )
+        )
+        add_if_supported(
+            MCPTool(
+                server="splunk",
+                name="get_service_health",
+                title="Check service health",
+                description=(
+                    "Required first telemetry step. Return current error rate, latency, baseline, "
+                    "recent deployments, and an evidence reference from the active demo run."
+                ),
+                input_schema=_object_schema(
+                    {
+                        "service": {
+                            "type": "string",
+                            "description": "Service name from the ticket.",
+                        },
+                        "minutes": {
+                            "type": "integer",
+                            "minimum": 5,
+                            "maximum": 90,
+                            "description": "Use 30 unless the user requests another window.",
+                        },
+                    }
+                ),
+            )
+        )
+        add_if_supported(
+            MCPTool(
+                server="splunk",
+                name="compare_service_baseline",
+                title="Compare with baseline",
+                description=(
+                    "Compare current service error rate and p95 latency with the preceding window."
+                ),
+                input_schema=_object_schema(
+                    {
+                        "service": {
+                            "type": "string",
+                            "description": "Service name from the ticket.",
+                        },
+                        "minutes": {
+                            "type": "integer",
+                            "minimum": 5,
+                            "maximum": 90,
+                            "description": "Use 30 unless the user requests another window.",
+                        },
+                    }
+                ),
+            )
+        )
+        add_if_supported(
+            MCPTool(
+                server="splunk",
+                name="search_logs",
+                title="Find correlated errors",
+                description=(
+                    "Find dominant error patterns and representative events for a service. Use for "
+                    "cause analysis and preserve any returned trace_id for trace_request."
+                ),
+                input_schema=_object_schema(
+                    {
+                        "service": {
+                            "type": "string",
+                            "description": "Service name from the ticket.",
+                        },
+                        "keywords": {
+                            "type": "string",
+                            "description": (
+                                "Narrow error terms, or ERROR for the incident workflow."
+                            ),
+                        },
+                        "minutes": {
+                            "type": "integer",
+                            "minimum": 5,
+                            "maximum": 90,
+                            "description": "Use 30 unless the user requests another window.",
+                        },
+                        "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+                    }
+                ),
+            )
+        )
+        add_if_supported(
+            MCPTool(
+                server="splunk",
+                name="trace_request",
+                title="Trace the failed request",
+                description="Follow one trace_id returned by search_logs across the service path.",
+                input_schema=_object_schema(
+                    {"trace_id": {"type": "string", "description": "Trace ID from a log result."}}
+                ),
+            )
+        )
+
+        if allow_writes:
+            add_if_supported(
+                MCPTool(
+                    server="tickets",
+                    name="add_work_note",
+                    title="Enrich the ticket",
+                    description=(
+                        "Add one internal investigation note after evidence collection. This is a "
+                        "real write and moves a new incident to Investigating."
+                    ),
+                    input_schema=_object_schema(
+                        {
+                            "ticket_id": {"type": "string"},
+                            "body": {
+                                "type": "string",
+                                "description": (
+                                    "Concise findings, evidence, assessment, and next actions."
+                                ),
+                            },
+                            "evidence_refs": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": (
+                                    "Unique evidence_ref values returned by Splunk operations."
+                                ),
+                            },
+                        }
+                    ),
+                )
+            )
+            add_if_supported(
+                MCPTool(
+                    server="tickets",
+                    name="update_ticket_status",
+                    title="Update ticket status",
+                    description=(
+                        "Explicitly change incident status only when the user requested that "
+                        "status. "
+                        "Adding a work note already moves a New incident to Investigating."
+                    ),
+                    input_schema=_object_schema(
+                        {
+                            "ticket_id": {"type": "string"},
+                            "status": {
+                                "type": "string",
+                                "enum": ["New", "Investigating", "Monitoring", "Resolved"],
+                            },
+                        }
+                    ),
+                )
+            )
+        return tools
+
     @staticmethod
     def _openai_tool(tool: MCPTool) -> dict[str, Any]:
         return {
@@ -444,6 +806,7 @@ class DemoAgent:
             "name": tool.agent_name,
             "description": f"[{tool.server} MCP] {tool.description}",
             "parameters": tool.input_schema,
+            "strict": True,
         }
 
     @staticmethod
@@ -453,6 +816,20 @@ class DemoAgent:
 
     @staticmethod
     def _write_authorized(text: str) -> bool:
+        if any(
+            phrase in text
+            for phrase in (
+                "do not update",
+                "don't update",
+                "without updating",
+                "do not change",
+                "don't change",
+                "read-only",
+                "read only",
+                "no changes",
+            )
+        ):
+            return False
         return any(
             phrase in text
             for phrase in (

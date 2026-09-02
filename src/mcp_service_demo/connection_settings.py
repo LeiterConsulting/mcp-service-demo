@@ -211,6 +211,13 @@ class SplunkConnectionStore:
             "api_key_configured": effective.llm_configured,
             "model": effective.openai_model,
             "provider": "OpenAI-compatible Responses API",
+            "tuning": {
+                "profile": "Balanced",
+                "max_iterations": effective.openai_max_iterations,
+                "max_tool_calls": effective.openai_max_tool_calls,
+                "max_parallel_tools": effective.openai_max_parallel_tools,
+                "request_timeout_seconds": effective.openai_timeout_seconds,
+            },
         }
 
     def _merged_payload(self, update: Mapping[str, Any]) -> dict[str, Any]:
