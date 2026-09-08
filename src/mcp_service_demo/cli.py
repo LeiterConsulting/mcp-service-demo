@@ -203,6 +203,9 @@ def main() -> None:
         print(f"Source: {status['source']}")
         if status.get("active_run_id"):
             print(f"Active demo run: {status['active_run_id']}")
+            print(f"Indexed events: {status.get('event_count', 0)}")
+        if status.get("verification_query"):
+            print(f"Exact verification SPL: {status['verification_query']}")
     elif command == "seed-splunk":
         settings = get_settings()
         result = _live_seed(settings, DemoStore(settings.database_path))

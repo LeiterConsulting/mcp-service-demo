@@ -1505,7 +1505,7 @@ function startResetProgress() {
   $("#reset-progress-kicker").textContent = "Reset in progress";
   $("#reset-progress-title").textContent = "Preparing a clean, searchable scenario";
   $("#reset-progress-message").textContent = state.health?.splunk_data_mode === "live"
-    ? "Restoring the ticket, publishing through HEC, and waiting for the new run to become searchable through MCP."
+    ? "Restoring the ticket, publishing through HEC, and waiting for the complete run to become searchable through MCP. Splunk indexing can take up to 90 seconds."
     : "Restoring the bundled ticket and telemetry fixture to its starting point.";
   setResetStep("ticket", "active", "Working");
   setResetStep("publish", "", "Queued");
@@ -1513,6 +1513,8 @@ function startResetProgress() {
   setResetStep("preserve", "", "Queued");
   $("#reset-result-grid").hidden = true;
   $("#reset-result-grid").innerHTML = "";
+  $("#reset-verification-detail").hidden = true;
+  $("#reset-verification-detail").innerHTML = "";
   $("#reset-retry-button").hidden = true;
   $("#reset-done-button").disabled = true;
   const dialog = $("#reset-dialog");
@@ -1531,12 +1533,33 @@ function completeResetProgress(result) {
     : "The deterministic fixture and service-desk record are back at their starting state.";
   const summary = [
     ["Ticket", result.ticket || "INC-1042", "Starting state restored"],
-    ["Telemetry", live ? `${Number(result.events_published || 0).toLocaleString()} events` : "Fixture restored", live ? `Indexed in ${result.index || "Splunk"}` : "Ready locally"],
-    ["MCP verification", live ? (result.indexed ? "Searchable" : "Pending") : "Ready", live ? (result.demo_run_id || "New run") : "Deterministic dataset"],
+    ["HEC publication", live ? `${Number(result.events_published || 0).toLocaleString()} accepted` : "Fixture restored", live ? `Target index: ${result.index || "Splunk"}` : "Ready locally"],
+    ["MCP verification", live ? `${Number(result.indexed_events || state.splunkStatus?.event_count || 0).toLocaleString()} searchable` : "Ready", live ? (result.verification_identity || "Configured MCP identity") : "Deterministic dataset"],
     ["Configuration", result.settings_preserved ? "Preserved" : "Unchanged", `${audienceProfile().label} audience · connections retained`],
   ];
   $("#reset-result-grid").innerHTML = summary.map(([label, value, detail]) => `<article><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b><small>${escapeHtml(detail)}</small></article>`).join("");
   $("#reset-result-grid").hidden = false;
+  if (live) {
+    const server = state.connections.find((item) => item.name === "splunk");
+    const contract = state.splunkSettings?.contract || {};
+    const query = result.verification_query || [
+      "search",
+      `index=\"${result.index || contract.index || "mcp_demo"}\"`,
+      `sourcetype=\"${result.sourcetype || contract.sourcetype || "mcp:demo:event"}\"`,
+      contract.scenario_id ? `scenario_id=\"${contract.scenario_id}\"` : "",
+      result.demo_run_id ? `demo_run_id=\"${result.demo_run_id}\"` : "",
+      "| stats count as events",
+    ].filter(Boolean).join(" ");
+    const app = contract.app || "search";
+    const runUrl = server?.web_url
+      ? `${server.web_url}/en-US/app/${encodeURIComponent(app)}/search?q=${encodeURIComponent(query)}&earliest=0&latest=now`
+      : null;
+    $("#reset-verification-detail").innerHTML = `
+      <div><span>Verification boundary</span><p>The count above was returned through the configured MCP bearer identity. A user signed into Splunk Web must also have search access to <b>${escapeHtml(result.index || contract.index || "mcp_demo")}</b>.</p></div>
+      <code>${escapeHtml(query)}</code>
+      ${runUrl ? `<a class="button secondary" href="${escapeHtml(runUrl)}" target="_blank" rel="noopener">Open this exact run in Splunk <span>↗</span></a>` : ""}`;
+    $("#reset-verification-detail").hidden = false;
+  }
   $("#reset-done-button").disabled = false;
 }
 

@@ -8,7 +8,7 @@
       content="A live demonstration of an agent using MCP to investigate Splunk telemetry and enrich a service ticket."
     />
     <title>MCP Service Demo</title>
-    <link rel="stylesheet" href="/static/styles.css?v=0.9.4" />
+    <link rel="stylesheet" href="/static/styles.css?v=0.9.5" />
   </head>
   <body>
     <div class="app-shell">
@@ -650,6 +650,7 @@
               <li data-reset-step="preserve"><span>4</span><div><b>Preserve demo configuration</b><small>Splunk, LLM, TLS, tuning, and audience settings</small></div><i>Queued</i></li>
             </ol>
             <div class="reset-result-grid" id="reset-result-grid" hidden></div>
+            <div class="reset-verification-detail" id="reset-verification-detail" hidden></div>
           </div>
           <footer class="reset-progress-footer">
             <button class="button secondary" type="button" id="reset-retry-button" hidden>Try again</button>
@@ -690,6 +691,6 @@
 
       <div class="toast-region" id="toast-region" aria-live="polite"></div>
     </div>
-    <script src="/static/app.js?v=0.9.4" defer></script>
+    <script src="/static/app.js?v=0.9.5" defer></script>
   </body>
 </html>

@@ -61,7 +61,7 @@ def _runtime_agent(on_event: Callable[[Any], Awaitable[None] | None] | None = No
 app = FastAPI(
     title="MCP Service Demo",
     description="Agent host and service-desk API for the Splunk MCP demonstration.",
-    version="0.9.4",
+    version="0.9.5",
 )
 
 static_dir = Path(__file__).parent / "static"

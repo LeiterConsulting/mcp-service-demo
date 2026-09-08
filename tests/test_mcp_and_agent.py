@@ -7,6 +7,7 @@ import pytest
 
 import mcp_service_demo.agent as agent_module
 import mcp_service_demo.mcp_client as mcp_client_module
+import mcp_service_demo.splunk_mcp_adapter as splunk_mcp_adapter_module
 from mcp_service_demo.agent import DemoAgent, ToolEvent
 from mcp_service_demo.config import get_settings
 from mcp_service_demo.mcp_client import (
@@ -319,6 +320,52 @@ async def test_live_splunk_status_distinguishes_searchable_from_fresh(tmp_path, 
     assert status["fresh"] is False
     assert status["age_minutes"] == 18.4
     assert status["event_count"] == 2557
+    assert 'demo_run_id="demo-old"' in status["verification_query"]
+
+
+async def test_live_splunk_run_verification_waits_for_the_full_event_count(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("DEMO_DATABASE_PATH", str(tmp_path / "demo.db"))
+    monkeypatch.setattr(splunk_mcp_adapter_module, "_MIN_SCENARIO_VERIFICATION_SECONDS", 0.01)
+    settings = replace(get_settings(), splunk_index_wait_seconds=0.05)
+
+    class CountBroker:
+        def __init__(self):
+            self.counts = iter(("2550", "2557"))
+            self.queries = []
+            self.earliest_times = []
+
+        async def list_tools(self):
+            return [
+                MCPTool(
+                    server="splunk",
+                    name="splunk_run_query",
+                    title="Run query",
+                    description="Run SPL",
+                    input_schema={"type": "object"},
+                )
+            ]
+
+        async def call(self, server, tool, arguments):
+            assert server == "splunk"
+            assert tool == "splunk_run_query"
+            self.queries.append(arguments["query"])
+            self.earliest_times.append(arguments["earliest_time"])
+            return {"results": [{"events": next(self.counts)}]}
+
+    broker = CountBroker()
+    adapter = SplunkMCPAdapter(settings, broker)
+
+    observed = await adapter.wait_for_run("demo-123", expected_events=2557)
+
+    assert observed == 2557
+    assert len(broker.queries) == 2
+    assert all('demo_run_id="demo-123"' in query for query in broker.queries)
+    assert all('index="mcp_demo"' in query for query in broker.queries)
+    assert "_mcp_verification_poll=1" in broker.queries[0]
+    assert "_mcp_verification_poll=2" in broker.queries[1]
+    assert broker.earliest_times == ["-7d", "-7d"]
 
 
 def test_chat_write_tools_require_explicit_authorization():

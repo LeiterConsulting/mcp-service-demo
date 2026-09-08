@@ -16,6 +16,7 @@ SplunkCall = Callable[[str, dict[str, Any], str], Awaitable[Any]]
 
 _SAFE_VALUE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
 _KEYWORD = re.compile(r"[A-Za-z0-9_.:-]+")
+_MIN_SCENARIO_VERIFICATION_SECONDS = 90.0
 
 
 class SplunkMCPAdapter:
@@ -129,40 +130,60 @@ class SplunkMCPAdapter:
         )
         active = rows[0] if rows else {}
         age_minutes = _number(active.get("age_minutes"))
+        active_run_id = active.get("demo_run_id")
         return {
-            "ready": bool(active.get("demo_run_id")),
-            "fresh": bool(active.get("demo_run_id")) and age_minutes <= 15,
+            "ready": bool(active_run_id),
+            "fresh": bool(active_run_id) and age_minutes <= 15,
             "age_minutes": age_minutes,
             "mode": "live",
             "source": self.settings.splunk_mcp_url,
             "index": self.settings.splunk_index,
             "sourcetype": self.settings.splunk_sourcetype,
             "scenario_id": self.settings.splunk_scenario_id,
-            "active_run_id": active.get("demo_run_id"),
+            "active_run_id": active_run_id,
             "event_count": _integer(active.get("events")),
+            "verification_identity": "configured MCP bearer identity",
+            "verification_query": (
+                self.verification_query(str(active_run_id)) if active_run_id else None
+            ),
         }
 
-    async def wait_for_run(self, run_id: str) -> bool:
+    def verification_query(self, run_id: str) -> str:
         normalized = _safe_value(run_id, "demo_run_id")
-        deadline = time.monotonic() + self.settings.splunk_index_wait_seconds
+        return (
+            f"search index={_spl_literal(self.settings.splunk_index)} "
+            f"sourcetype={_spl_literal(self.settings.splunk_sourcetype)} "
+            f"scenario_id={_spl_literal(self.settings.splunk_scenario_id)} "
+            f"demo_run_id={_spl_literal(normalized)} "
+            "| stats count as events"
+        )
+
+    async def wait_for_run(self, run_id: str, *, expected_events: int = 1) -> int:
+        query = self.verification_query(run_id)
+        deadline = time.monotonic() + max(
+            self.settings.splunk_index_wait_seconds, _MIN_SCENARIO_VERIFICATION_SECONDS
+        )
+        observed_events = 0
+        poll = 0
         while True:
+            poll += 1
+            poll_query = (
+                f"{query} | eval _mcp_verification_poll={poll} "
+                "| fields - _mcp_verification_poll"
+            )
             rows = await self._query(
-                (
-                    f"search index={_spl_literal(self.settings.splunk_index)} "
-                    f"sourcetype={_spl_literal(self.settings.splunk_sourcetype)} "
-                    f"scenario_id={_spl_literal(self.settings.splunk_scenario_id)} "
-                    f"demo_run_id={_spl_literal(normalized)} earliest=-15m "
-                    "| stats count as events"
-                ),
+                poll_query,
                 title="Confirm the demo data is searchable",
-                earliest_time="-15m",
+                earliest_time="-7d",
                 row_limit=1,
             )
-            if rows and _integer(rows[0].get("events")) > 0:
-                return True
+            if rows:
+                observed_events = max(observed_events, _integer(rows[0].get("events")))
+            if observed_events >= expected_events:
+                return observed_events
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                return False
+                return observed_events
             await asyncio.sleep(min(1.0, remaining))
 
     async def get_service_health(

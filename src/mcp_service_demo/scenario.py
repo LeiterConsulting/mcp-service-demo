@@ -22,6 +22,9 @@ class SplunkHECError(RuntimeError):
     """Raised when the scenario cannot be published through Splunk HEC."""
 
 
+_MIN_SCENARIO_VERIFICATION_SECONDS = 90.0
+
+
 @dataclass
 class SplunkHECClient:
     settings: Settings
@@ -121,20 +124,29 @@ def seed_splunk_scenario(
     published = publisher.publish(events, run_id)
 
     indexed = False
+    indexed_events = 0
     if wait_for_index:
         assert client is not None
         backend = LiveSplunkBackend(settings, client=client)
-        deadline = time.monotonic() + settings.splunk_index_wait_seconds
+        deadline = time.monotonic() + max(
+            settings.splunk_index_wait_seconds, _MIN_SCENARIO_VERIFICATION_SECONDS
+        )
         while time.monotonic() <= deadline:
             latest = backend._latest_run(required=False)
             if latest and latest.get("demo_run_id") == run_id:
-                indexed = True
-                break
+                try:
+                    indexed_events = max(indexed_events, int(float(latest.get("events") or 0)))
+                except (TypeError, ValueError):
+                    indexed_events = 0
+                if indexed_events >= published:
+                    indexed = True
+                    break
             time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
         if not indexed:
             raise SplunkConnectionError(
-                f"Published {published} events, but run {run_id} was not searchable within "
-                f"{settings.splunk_index_wait_seconds:g} seconds."
+                f"HEC accepted {published} events for run {run_id}, but the configured REST "
+                f"search identity could only verify {indexed_events} in index "
+                f"{settings.splunk_index} before the verification window expired."
             )
 
     return {
@@ -143,6 +155,7 @@ def seed_splunk_scenario(
         "demo_run_id": run_id,
         "events_published": published,
         "indexed": indexed,
+        "indexed_events": indexed_events,
         "index": settings.splunk_index,
         "sourcetype": settings.splunk_sourcetype,
     }
@@ -160,11 +173,23 @@ async def seed_splunk_scenario_via_mcp(
         store,
         wait_for_index=False,
     )
-    indexed = await SplunkMCPAdapter(settings, broker).wait_for_run(published["demo_run_id"])
-    if not indexed:
+    adapter = SplunkMCPAdapter(settings, broker)
+    indexed_events = await adapter.wait_for_run(
+        published["demo_run_id"], expected_events=published["events_published"]
+    )
+    if indexed_events < published["events_published"]:
         raise SplunkConnectionError(
-            f"Published {published['events_published']} events, but run "
-            f"{published['demo_run_id']} was not searchable through MCP within "
-            f"{settings.splunk_index_wait_seconds:g} seconds."
+            f"HEC accepted {published['events_published']} events for run "
+            f"{published['demo_run_id']}, but the configured MCP search identity could only "
+            f"verify {indexed_events} in index {settings.splunk_index} within "
+            f"{max(settings.splunk_index_wait_seconds, _MIN_SCENARIO_VERIFICATION_SECONDS):g} "
+            "seconds. Check the HEC target, index, "
+            "and MCP search-role permissions."
         )
-    return {**published, "indexed": True}
+    return {
+        **published,
+        "indexed": True,
+        "indexed_events": indexed_events,
+        "verification_identity": "configured MCP bearer identity",
+        "verification_query": adapter.verification_query(published["demo_run_id"]),
+    }

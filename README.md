@@ -166,8 +166,15 @@ Open **Setup → Demo controls → Reset demo**. In live mode this action:
 3. sends the deterministic event stream through HEC; and
 4. waits until that exact run is searchable through the configured MCP endpoint.
 
-When complete, the header reports **Splunk live**. Open the **MCP Service Demo** app in Splunk to see
-the indexed run, then return to the service desk and investigate `INC-1042`.
+When complete, the MCP connections modal reports **Scenario ready**. Open the **MCP Service Demo**
+app in Splunk to see the indexed run, then return to the service desk and investigate `INC-1042`.
+
+The reset confirmation reports the event count returned through the configured MCP search identity
+and includes **Open this exact run in Splunk**. That link runs the same index-, source type-, scenario-,
+and run-scoped search in Splunk Web. If MCP reports events but Splunk Web reports zero, the logged-in
+Splunk Web user is either connected to a different Splunk instance or does not have `mcp_demo` in its
+searchable-index permissions. Use `index=mcp_demo | stats count` while signed in as an administrator,
+then add `mcp_demo` to the presenter's role under **Settings → Roles → Indexes** if needed.
 
 For a command-line verification from the Docker installation, use:
 
