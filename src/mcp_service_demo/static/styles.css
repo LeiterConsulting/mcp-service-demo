@@ -662,6 +662,52 @@ body[data-audience="security"] .tool-access { box-shadow: inset 0 0 0 1px color-
 .connection-card-tools { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 5px; padding-top: 11px; border-top: 1px solid #edf0ec; }
 .connection-state { display: inline-flex; align-items: center; gap: 5px; color: var(--green); font-size: 8px; font-weight: 800; text-transform: uppercase; }
 .connection-state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #21aa76; box-shadow: 0 0 0 4px rgba(33,170,118,0.12); }
+.connection-readiness-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.connection-readiness { position: relative; display: grid; gap: 5px; padding: 14px 15px; border: 1px solid var(--line); border-radius: 12px; background: white; }
+.connection-readiness::before { content: ""; position: absolute; top: 15px; right: 15px; width: 8px; height: 8px; border-radius: 50%; }
+.connection-readiness.ready::before { background: #21aa76; box-shadow: 0 0 0 4px rgba(33,170,118,0.12); }
+.connection-readiness.warning::before { background: #d79d22; box-shadow: 0 0 0 4px rgba(215,157,34,0.14); }
+.connection-readiness > span { color: var(--green); font-size: 7px; font-weight: 850; letter-spacing: 0.09em; text-transform: uppercase; }
+.connection-readiness > b { padding-right: 20px; font-size: 12px; }
+.connection-readiness > small { max-width: 90%; color: var(--muted); font-size: 8px; line-height: 1.45; }
+.inline-reset-link { justify-self: start; margin-top: 3px; padding: 0; border: 0; color: var(--green); background: transparent; font-size: 8px; font-weight: 800; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.reset-dialog { width: min(720px, calc(100vw - 32px)); }
+.reset-progress-body { display: grid; gap: 16px; padding: 22px 28px 26px; }
+.reset-progress-hero { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; padding: 17px; border: 1px solid var(--line); border-radius: 14px; background: white; }
+.reset-progress-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; color: white; background: var(--green); font-size: 21px; font-weight: 700; }
+.reset-progress-hero.running .reset-progress-icon { animation: reset-spin 1.2s linear infinite; }
+.reset-progress-hero.complete .reset-progress-icon { font-size: 0; background: #21aa76; }
+.reset-progress-hero.complete .reset-progress-icon::after { content: "✓"; font-size: 20px; }
+.reset-progress-hero.failed { border-color: #e5b9b2; background: #fff8f7; }
+.reset-progress-hero.failed .reset-progress-icon { background: var(--red); animation: none; }
+.reset-progress-hero.failed .reset-progress-icon { font-size: 0; }
+.reset-progress-hero.failed .reset-progress-icon::after { content: "!"; font-size: 20px; }
+.reset-progress-hero span:not(.reset-progress-icon) { color: var(--green); font-size: 7px; font-weight: 850; letter-spacing: 0.1em; text-transform: uppercase; }
+.reset-progress-hero h3 { margin: 4px 0 3px; font-family: Georgia, serif; font-size: 20px; font-weight: 500; }
+.reset-progress-hero p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.reset-steps { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: 13px; background: white; overflow: hidden; }
+.reset-steps li { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; padding: 13px 15px; border-bottom: 1px solid #edf0ec; }
+.reset-steps li:last-child { border-bottom: 0; }
+.reset-steps li > span { width: 25px; height: 25px; display: grid; place-items: center; border-radius: 50%; color: #728079; background: #edf1ed; font-size: 8px; font-weight: 850; }
+.reset-steps li b, .reset-steps li small { display: block; }
+.reset-steps li b { font-size: 10px; }
+.reset-steps li small { margin-top: 3px; color: var(--muted); font-size: 8px; }
+.reset-steps li i { color: #89938f; font-size: 7px; font-style: normal; font-weight: 850; letter-spacing: 0.07em; text-transform: uppercase; }
+.reset-steps li.active > span { color: white; background: var(--green); animation: status-pulse 1.1s ease-in-out infinite; }
+.reset-steps li.complete > span { font-size: 0; color: white; background: #21aa76; }
+.reset-steps li.complete > span::after { content: "✓"; font-size: 10px; }
+.reset-steps li.complete i { color: var(--green); }
+.reset-steps li.failed > span { color: white; background: var(--red); }
+.reset-steps li.failed i { color: var(--red); }
+.reset-result-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.reset-result-grid article { padding: 13px 14px; border: 1px solid var(--line); border-radius: 11px; background: white; }
+.reset-result-grid span, .reset-result-grid b, .reset-result-grid small { display: block; }
+.reset-result-grid span { color: var(--green); font-size: 7px; font-weight: 850; letter-spacing: 0.09em; text-transform: uppercase; }
+.reset-result-grid b { margin-top: 5px; font-size: 11px; }
+.reset-result-grid small { margin-top: 4px; color: var(--muted); font-size: 8px; line-height: 1.4; word-break: break-word; }
+.reset-progress-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 28px; border-top: 1px solid var(--line); background: white; }
+.reset-progress-footer .button { min-height: 38px; font-size: 9px; }
+@keyframes reset-spin { to { transform: rotate(360deg); } }
 .tool-detail { padding: 24px 28px 28px; }
 .tool-audience-lens { display: flex; align-items: flex-start; gap: 10px; margin-top: 12px; padding: 13px 15px; border: 1px dashed color-mix(in srgb, var(--green) 38%, var(--line)); border-radius: 11px; background: var(--green-soft); }
 .tool-audience-lens span { flex: 0 0 auto; color: var(--green-dark); font-size: 8px; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
@@ -696,6 +742,7 @@ body[data-audience="security"] .tool-access { box-shadow: inset 0 0 0 1px color-
   .topbar-actions .button { display: none; }
   .topbar-actions #setup-button { display: inline-flex; }
   .view { min-height: calc(100vh - 110px); }
+  .connection-readiness-grid, .reset-result-grid { grid-template-columns: 1fr; }
   .briefing-wrap { padding: 38px 20px; }
   .hero-grid { gap: 35px; }
   .hero-copy h1 { font-size: 48px; }

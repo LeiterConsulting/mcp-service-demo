@@ -8,7 +8,7 @@
       content="A live demonstration of an agent using MCP to investigate Splunk telemetry and enrich a service ticket."
     />
     <title>MCP Service Demo</title>
-    <link rel="stylesheet" href="/static/styles.css?v=0.9.3" />
+    <link rel="stylesheet" href="/static/styles.css?v=0.9.4" />
   </head>
   <body>
     <div class="app-shell">
@@ -628,6 +628,36 @@
         </div>
       </dialog>
 
+      <dialog class="info-dialog reset-dialog" id="reset-dialog" aria-labelledby="reset-dialog-title">
+        <div class="info-shell">
+          <header class="info-header compact">
+            <div>
+              <span class="workspace-kicker">Demo controls</span>
+              <h2 id="reset-dialog-title">Restoring the incident scenario</h2>
+              <p id="reset-dialog-description">The reset starts immediately. Connection and audience settings remain unchanged.</p>
+            </div>
+            <button type="button" class="settings-close" data-close-dialog="reset-dialog" aria-label="Close reset status">×</button>
+          </header>
+          <div class="reset-progress-body">
+            <section class="reset-progress-hero running" id="reset-progress-hero" aria-live="polite">
+              <span class="reset-progress-icon" aria-hidden="true">↻</span>
+              <div><span id="reset-progress-kicker">Reset in progress</span><h3 id="reset-progress-title">Preparing a clean, searchable scenario</h3><p id="reset-progress-message">Restoring the ticket and publishing deterministic evidence for the next demonstration.</p></div>
+            </section>
+            <ol class="reset-steps" id="reset-steps">
+              <li data-reset-step="ticket" class="active"><span>1</span><div><b>Restore service-desk state</b><small>Ticket, assignment, escalation, notes, and status</small></div><i>Working</i></li>
+              <li data-reset-step="publish"><span>2</span><div><b>Publish the Splunk scenario</b><small>Fresh deterministic telemetry through the configured HEC</small></div><i>Queued</i></li>
+              <li data-reset-step="verify"><span>3</span><div><b>Verify through MCP</b><small>Confirm the new run is searchable by the agent</small></div><i>Queued</i></li>
+              <li data-reset-step="preserve"><span>4</span><div><b>Preserve demo configuration</b><small>Splunk, LLM, TLS, tuning, and audience settings</small></div><i>Queued</i></li>
+            </ol>
+            <div class="reset-result-grid" id="reset-result-grid" hidden></div>
+          </div>
+          <footer class="reset-progress-footer">
+            <button class="button secondary" type="button" id="reset-retry-button" hidden>Try again</button>
+            <button class="button primary" type="button" id="reset-done-button" data-close-dialog="reset-dialog" disabled>Done</button>
+          </footer>
+        </div>
+      </dialog>
+
       <dialog class="info-dialog tool-dialog" id="tool-dialog" aria-labelledby="tool-dialog-title">
         <div class="info-shell">
           <header class="info-header compact">
@@ -660,6 +690,6 @@
 
       <div class="toast-region" id="toast-region" aria-live="polite"></div>
     </div>
-    <script src="/static/app.js?v=0.9.3" defer></script>
+    <script src="/static/app.js?v=0.9.4" defer></script>
   </body>
 </html>

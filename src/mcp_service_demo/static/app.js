@@ -493,19 +493,20 @@ function renderToolCatalog() {
 
 function renderConnectionStatus() {
   const pill = $("#connection-pill");
-  const live = state.health?.splunk_data_mode === "live";
-  const splunkReady = state.splunkStatus?.ready;
-  const scenarioFresh = state.splunkStatus?.fresh !== false;
-  const presentationReady = splunkReady && scenarioFresh;
+  const expectedServers = new Set(["splunk", "tickets", "catalog"]);
+  const connectedServers = new Set(
+    state.connections.map((server) => server.name).filter((name) => expectedServers.has(name)),
+  );
+  const connected = [...expectedServers].every((name) => connectedServers.has(name));
   pill.classList.remove("online", "offline");
-  pill.classList.add(presentationReady ? "online" : "offline");
-  pill.querySelector("span:last-child").textContent = presentationReady
-    ? `3 MCP servers · Splunk ${live ? "live" : "fixture"}`
-    : splunkReady && !scenarioFresh
-      ? "Reset demo to refresh Splunk data"
-      : live
-        ? "Splunk needs a scenario"
-        : "MCP servers online";
+  pill.classList.add(connected ? "online" : "offline");
+  pill.querySelector("span:last-child").textContent = connected
+    ? `${connectedServers.size} MCP servers · connected`
+    : `${connectedServers.size}/${expectedServers.size} MCP servers connected`;
+  pill.title = connected
+    ? "All MCP servers are connected. View endpoints, scenario readiness, and discovered tools."
+    : "One or more MCP servers are unavailable. View connection details.";
+  const live = state.health?.splunk_data_mode === "live";
   $("#data-source-label").innerHTML = live
     ? "<span></span> Live protocol · Real Splunk endpoint"
     : "<span></span> Live protocol · Fixture telemetry";
@@ -562,7 +563,33 @@ function renderConnections() {
     catalog: "Operational authority: service ownership, dependencies, escalation path, and runbooks.",
   };
   const icons = { splunk: ["S", "splunk-icon"], tickets: ["N", "desk-icon"], catalog: ["C", "catalog-icon"] };
-  $("#connections-overview").innerHTML = `<div class="connection-audience-lens"><span>${escapeHtml(audienceProfile().label)} lens</span>${escapeHtml(audienceProfile().connections)}</div>` + state.connections
+  const expectedServers = new Set(["splunk", "tickets", "catalog"]);
+  const connectedServerCount = new Set(
+    state.connections.map((server) => server.name).filter((name) => expectedServers.has(name)),
+  ).size;
+  const allServersConnected = connectedServerCount === expectedServers.size;
+  const live = state.health?.splunk_data_mode === "live";
+  const scenarioReady = !live || Boolean(state.splunkStatus?.ready);
+  const scenarioFresh = !live || state.splunkStatus?.fresh !== false;
+  const scenarioClass = scenarioReady && scenarioFresh ? "ready" : "warning";
+  const scenarioTitle = scenarioReady && scenarioFresh
+    ? "Scenario ready"
+    : scenarioReady
+      ? "Scenario data is stale"
+      : "Scenario is not searchable";
+  const scenarioDetail = scenarioReady && scenarioFresh
+    ? live
+      ? `${Number(state.splunkStatus?.event_count || 0).toLocaleString()} events in the active Splunk run`
+      : "The bundled fixture is ready for a deterministic investigation"
+    : scenarioReady
+      ? `The MCP connection is healthy, but the active run is ${Math.round(Number(state.splunkStatus?.age_minutes || 0))} minutes old`
+      : "The MCP transport can be connected even when the demo dataset still needs to be published";
+  $("#connections-overview").innerHTML = `
+    <div class="connection-readiness-grid">
+      <article class="connection-readiness ${allServersConnected ? "ready" : "warning"}"><span>Protocol connectivity</span><b>${connectedServerCount}/3 MCP servers connected</b><small>${allServersConnected ? "Tool discovery completed across the configured endpoints." : "One or more endpoints did not complete MCP tool discovery."}</small></article>
+      <article class="connection-readiness ${scenarioClass}"><span>Presentation data</span><b>${escapeHtml(scenarioTitle)}</b><small>${escapeHtml(scenarioDetail)}</small>${scenarioClass === "warning" ? '<button type="button" class="inline-reset-link" id="connections-reset-button">Reset scenario</button>' : ""}</article>
+    </div>
+    <div class="connection-audience-lens"><span>${escapeHtml(audienceProfile().label)} lens</span>${escapeHtml(audienceProfile().connections)}</div>` + state.connections
     .map((server) => {
       const tools = state.tools.filter((tool) => tool.server === server.name);
       const [letter, iconClass] = icons[server.name] || ["M", "agent-icon"];
@@ -575,6 +602,8 @@ function renderConnections() {
       </article>`;
     })
     .join("");
+  const resetButton = $("#connections-reset-button");
+  if (resetButton) resetButton.addEventListener("click", resetDemo);
   $$('[data-connection-tool]', $("#connections-overview")).forEach((button) =>
     button.addEventListener("click", () => {
       const [server, name] = button.dataset.connectionTool.split(":");
@@ -1420,9 +1449,20 @@ async function refreshTickets(selectedId = null) {
 async function resetDemo() {
   if (state.busy) return;
   state.busy = true;
+  startResetProgress();
   try {
-    await api("/api/demo/reset", { method: "POST", body: "{}" });
-    state.splunkStatus = await api("/api/splunk/status").catch(() => state.splunkStatus);
+    const result = await api("/api/demo/reset", { method: "POST", body: "{}" });
+    const [splunkStatus, health, toolPayload] = await Promise.all([
+      api("/api/splunk/status").catch(() => state.splunkStatus),
+      api("/api/health").catch(() => state.health),
+      api("/api/mcp/tools").catch(() => null),
+    ]);
+    state.splunkStatus = splunkStatus;
+    state.health = health;
+    if (toolPayload) {
+      state.connections = toolPayload.servers;
+      state.tools = toolPayload.tools;
+    }
     state.investigation = null;
     state.timeline = [];
     state.chat = [
@@ -1435,13 +1475,85 @@ async function resetDemo() {
     await refreshTickets("INC-1042");
     renderChat();
     renderConnectionStatus();
-    toast(`Demo scenario restored · ${audienceProfile().label} audience and connections preserved`);
+    renderToolCatalog();
+    completeResetProgress(result);
   } catch (error) {
-    toast(error.message, true);
+    failResetProgress(error);
   } finally {
     state.busy = false;
     renderTicket();
   }
+}
+
+function setResetStep(name, status, label) {
+  const step = $(`[data-reset-step="${name}"]`);
+  if (!step) return;
+  step.classList.remove("active", "complete", "failed");
+  if (status) step.classList.add(status);
+  step.querySelector("i").textContent = label;
+}
+
+function startResetProgress() {
+  const setupDialog = $("#setup-dialog");
+  const connectionsDialog = $("#connections-dialog");
+  if (setupDialog.open) setupDialog.close();
+  if (connectionsDialog.open) connectionsDialog.close();
+  $("#reset-dialog-title").textContent = "Restoring the incident scenario";
+  $("#reset-dialog-description").textContent = "The reset starts immediately. Connection and audience settings remain unchanged.";
+  const hero = $("#reset-progress-hero");
+  hero.className = "reset-progress-hero running";
+  $("#reset-progress-kicker").textContent = "Reset in progress";
+  $("#reset-progress-title").textContent = "Preparing a clean, searchable scenario";
+  $("#reset-progress-message").textContent = state.health?.splunk_data_mode === "live"
+    ? "Restoring the ticket, publishing through HEC, and waiting for the new run to become searchable through MCP."
+    : "Restoring the bundled ticket and telemetry fixture to its starting point.";
+  setResetStep("ticket", "active", "Working");
+  setResetStep("publish", "", "Queued");
+  setResetStep("verify", "", "Queued");
+  setResetStep("preserve", "", "Queued");
+  $("#reset-result-grid").hidden = true;
+  $("#reset-result-grid").innerHTML = "";
+  $("#reset-retry-button").hidden = true;
+  $("#reset-done-button").disabled = true;
+  const dialog = $("#reset-dialog");
+  if (!dialog.open) dialog.showModal();
+}
+
+function completeResetProgress(result) {
+  ["ticket", "publish", "verify", "preserve"].forEach((name) => setResetStep(name, "complete", "Complete"));
+  const live = state.health?.splunk_data_mode === "live";
+  const hero = $("#reset-progress-hero");
+  hero.className = "reset-progress-hero complete";
+  $("#reset-progress-kicker").textContent = "Scenario ready";
+  $("#reset-progress-title").textContent = "INC-1042 is ready for the next run";
+  $("#reset-progress-message").textContent = live
+    ? "Fresh Splunk evidence is searchable through MCP and the service-desk record is back at its starting state."
+    : "The deterministic fixture and service-desk record are back at their starting state.";
+  const summary = [
+    ["Ticket", result.ticket || "INC-1042", "Starting state restored"],
+    ["Telemetry", live ? `${Number(result.events_published || 0).toLocaleString()} events` : "Fixture restored", live ? `Indexed in ${result.index || "Splunk"}` : "Ready locally"],
+    ["MCP verification", live ? (result.indexed ? "Searchable" : "Pending") : "Ready", live ? (result.demo_run_id || "New run") : "Deterministic dataset"],
+    ["Configuration", result.settings_preserved ? "Preserved" : "Unchanged", `${audienceProfile().label} audience · connections retained`],
+  ];
+  $("#reset-result-grid").innerHTML = summary.map(([label, value, detail]) => `<article><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b><small>${escapeHtml(detail)}</small></article>`).join("");
+  $("#reset-result-grid").hidden = false;
+  $("#reset-done-button").disabled = false;
+}
+
+function failResetProgress(error) {
+  const hero = $("#reset-progress-hero");
+  hero.className = "reset-progress-hero failed";
+  $("#reset-progress-kicker").textContent = "Reset needs attention";
+  $("#reset-progress-title").textContent = "The scenario was not confirmed";
+  $("#reset-progress-message").textContent = error.message;
+  const active = $("#reset-steps .active");
+  if (active) {
+    active.classList.remove("active");
+    active.classList.add("failed");
+    active.querySelector("i").textContent = "Failed";
+  }
+  $("#reset-retry-button").hidden = false;
+  $("#reset-done-button").disabled = false;
 }
 
 function toast(message, isError = false) {
@@ -1470,6 +1582,7 @@ function bindEvents() {
   $("#test-llm-button").addEventListener("click", testLLMConnection);
   $("#llm-settings-form").addEventListener("submit", saveLLMConnection);
   $("#reset-button").addEventListener("click", resetDemo);
+  $("#reset-retry-button").addEventListener("click", resetDemo);
   $("#export-profile-button").addEventListener("click", () =>
     exportProfile().catch((error) => showProfileTransferResult(error.message, true)),
   );
