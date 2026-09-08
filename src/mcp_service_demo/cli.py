@@ -129,8 +129,14 @@ def package_splunk_app(output: Path) -> Path:
     output.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(output, "w:gz") as archive:
         for path in sorted(source.rglob("*")):
-            if path.is_file() and path.name not in {".DS_Store"}:
-                archive.add(path, arcname=Path(source.name) / path.relative_to(source))
+            relative_path = path.relative_to(source)
+            macos_metadata = (
+                "__MACOSX" in relative_path.parts
+                or path.name == ".DS_Store"
+                or path.name.startswith("._")
+            )
+            if path.is_file() and not macos_metadata:
+                archive.add(path, arcname=Path(source.name) / relative_path)
     return output
 
 
