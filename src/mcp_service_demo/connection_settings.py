@@ -28,12 +28,15 @@ _CA_FIELDS = {
     "mcp": "mcp_ca_bundle_path",
     "rest": "rest_ca_bundle_path",
     "hec": "hec_ca_bundle_path",
+    "llm": "openai_ca_bundle_path",
 }
 _EDITABLE_FIELDS = {
     "agent_mode",
     "demo_audience",
     "openai_base_url",
     "openai_model",
+    "openai_verify_ssl",
+    "openai_ca_bundle_path",
     "mcp_url",
     "mcp_verify_ssl",
     "mcp_ca_bundle_path",
@@ -68,7 +71,12 @@ _SECRET_FIELDS = {
     "splunk_password",
     "openai_api_key",
 }
-_BOOLEAN_FIELDS = {"mcp_verify_ssl", "rest_verify_ssl", "hec_verify_ssl"}
+_BOOLEAN_FIELDS = {
+    "mcp_verify_ssl",
+    "rest_verify_ssl",
+    "hec_verify_ssl",
+    "openai_verify_ssl",
+}
 _NUMBER_FIELDS = {
     "splunk_search_timeout_seconds",
     "splunk_index_wait_seconds",
@@ -173,6 +181,10 @@ class SplunkConnectionStore:
             saved.get("openai_base_url", base.openai_base_url),
             "LLM API endpoint",
         )
+        openai_verify = _verify_value(
+            saved.get("openai_verify_ssl", base.openai_verify is not False),
+            saved.get("openai_ca_bundle_path"),
+        )
         openai_model = _model(saved.get("openai_model", base.openai_model))
         demo_contract = {
             "splunk_app": _bounded_text(
@@ -241,6 +253,7 @@ class SplunkConnectionStore:
             openai_base_url=openai_base_url.rstrip("/"),
             openai_api_key=_secret(saved, "openai_api_key", base.openai_api_key),
             openai_model=openai_model,
+            openai_verify=openai_verify,
             openai_timeout_seconds=_number(
                 saved.get("openai_timeout_seconds", base.openai_timeout_seconds),
                 "LLM request timeout",
@@ -354,7 +367,17 @@ class SplunkConnectionStore:
     def safe_export_llm(self, base: Settings) -> dict[str, Any]:
         saved = self.load()
         effective = self.apply(base, saved)
-        llm_fields = {"agent_mode", "openai_base_url", "openai_api_key", "openai_model"}
+        llm_fields = {
+            "agent_mode",
+            "openai_base_url",
+            "openai_api_key",
+            "openai_model",
+            "openai_verify_ssl",
+            "openai_ca_bundle_path",
+        }
+        ca_bundle = (
+            str(effective.openai_verify) if isinstance(effective.openai_verify, str) else None
+        )
         return {
             "source": "saved profile" if llm_fields.intersection(saved) else "environment defaults",
             "agent_mode": effective.agent_mode_preference,
@@ -363,6 +386,8 @@ class SplunkConnectionStore:
             "api_key": MASK if effective.openai_api_key else "",
             "api_key_configured": effective.llm_configured,
             "model": effective.openai_model,
+            "verify_ssl": effective.openai_verify is not False,
+            "ca_bundle_path": ca_bundle,
             "provider": "OpenAI-compatible Responses API",
             "tuning": {
                 "profile": "Balanced",
@@ -487,6 +512,8 @@ class SplunkConnectionStore:
             "openai_base_url": effective.openai_base_url,
             "openai_api_key": effective.openai_api_key or "",
             "openai_model": effective.openai_model,
+            "openai_verify_ssl": effective.openai_verify is not False,
+            "openai_ca_bundle_path": ca_path(effective.openai_verify),
             "openai_timeout_seconds": effective.openai_timeout_seconds,
             "openai_max_retries": effective.openai_max_retries,
             "openai_max_iterations": effective.openai_max_iterations,

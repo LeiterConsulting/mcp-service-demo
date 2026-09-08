@@ -65,7 +65,8 @@ when those volumes should also be permanently removed.
 An LLM is optional. Open **Setup → Agent & LLM** to switch between the deterministic Guided agent and an
 LLM-assisted agent that selects and sequences focused incident operations backed by the discovered
 MCP capabilities. The setup supports an OpenAI or Responses-compatible endpoint, model, encrypted
-API key, and connection test. A balanced runtime profile bounds retries and downstream concurrency
+API key, TLS verification, an optional custom CA bundle, and a connection test. A balanced runtime
+profile bounds retries and downstream concurrency
 while leaving enough turns and tool calls for the complete ticket workflow. Guided mode remains the
 presentation-safe fallback if the model endpoint is unavailable.
 
@@ -78,7 +79,11 @@ docker compose exec demo python -c "import httpx; print(httpx.get('https://api.o
 
 An HTTP `401` is expected without a key and proves DNS, outbound HTTPS, and certificate validation
 are working. A socket, proxy, or certificate exception identifies the machine-level path that needs
-attention. The in-app test reports the nested cause and the effective Docker runtime URL.
+attention. The in-app test reports the nested cause and the effective Docker runtime URL. For a
+corporate TLS-inspection certificate, place the issuing PEM bundle in `certs/`, keep verification
+enabled, and select its `/app/certs/...` path under **Setup → Agent & LLM**. See
+[`docs/LLM_SETUP.md`](docs/LLM_SETUP.md) for the macOS and Docker procedure. Disabling verification
+is retained as a controlled-demo workaround only.
 
 The default `SPLUNK_DATA_MODE=fixture` is the zero-dependency path. To use a real endpoint,
 install the companion Splunk app, open **Setup → Splunk** in the demo header, enter the MCP and HEC
@@ -141,9 +146,9 @@ the entire service set with one command. The native path is useful for developme
 
 Open **Setup → Demo controls → Move this demo profile** to create a portable `.mcpdemo` package.
 The export contains the effective Splunk MCP, REST, HEC, TLS, companion-app contract, LLM, tuning,
-and audience settings—including credentials. Configured CA bundles are embedded so they do not
-depend on a source-machine path. Ticket records and synthetic scenario data are deliberately not
-included.
+and audience settings—including credentials. This includes the LLM TLS policy. Configured CA
+bundles are embedded so they do not depend on a source-machine path. Ticket records and synthetic
+scenario data are deliberately not included.
 
 The package is encrypted with a passphrase of at least 12 characters. The passphrase is neither
 stored in the package nor recoverable, so transfer it separately. On the target machine, choose the
@@ -167,6 +172,7 @@ The `run` command starts all four processes and seeds the scenario. Press `Ctrl+
 - [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) — an 8–10 minute customer narrative
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system boundaries and replacement seams
 - [`docs/SPLUNK_SETUP.md`](docs/SPLUNK_SETUP.md) — companion app, HEC, and live REST setup
+- [`docs/LLM_SETUP.md`](docs/LLM_SETUP.md) — model endpoint, Docker TLS, and custom CA setup
 
 ## Useful commands
 

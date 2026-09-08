@@ -583,8 +583,10 @@ async def test_llm_mode_uses_saved_endpoint_model_and_responses_api(tmp_path, mo
         openai_base_url="http://localhost:11434/v1",
         openai_api_key="demo-key",
         openai_model="demo-model",
+        openai_verify=False,
     )
     captured = {}
+    transport = object()
 
     class FakeResponses:
         async def create(self, **kwargs):
@@ -607,6 +609,15 @@ async def test_llm_mode_uses_saved_endpoint_model_and_responses_api(tmp_path, mo
             return []
 
     monkeypatch.setattr(agent_module, "AsyncOpenAI", FakeOpenAI)
+    monkeypatch.setattr(
+        agent_module,
+        "openai_http_client",
+        lambda verify, *, timeout: captured.update(
+            transport_verify=verify,
+            transport_timeout=timeout,
+        )
+        or transport,
+    )
     result = await DemoAgent(settings, EmptyBroker()).chat("Summarize the incident")
 
     assert result.mode == "openai"
@@ -616,7 +627,10 @@ async def test_llm_mode_uses_saved_endpoint_model_and_responses_api(tmp_path, mo
         "base_url": "http://host.docker.internal:11434/v1",
         "timeout": 60.0,
         "max_retries": 1,
+        "http_client": transport,
     }
+    assert captured["transport_verify"] is False
+    assert captured["transport_timeout"] == 60.0
     assert captured["request"]["model"] == "demo-model"
     assert captured["request"]["input"] == "Summarize the incident"
     assert captured["request"]["tool_choice"] == "auto"

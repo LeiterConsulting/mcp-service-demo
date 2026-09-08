@@ -20,6 +20,7 @@ from .agent import DemoAgent
 from .config import Settings, get_environment_settings, get_settings
 from .connection_settings import SplunkConnectionStore
 from .diagnostics import exception_details, safe_endpoint
+from .llm_client import openai_http_client
 from .mcp_client import MCPBroker, MCPRemoteTarget
 from .networking import external_runtime_url, is_bundled_mcp_url
 from .scenario import seed_splunk_scenario_via_mcp
@@ -60,7 +61,7 @@ def _runtime_agent(on_event: Callable[[Any], Awaitable[None] | None] | None = No
 app = FastAPI(
     title="MCP Service Demo",
     description="Agent host and service-desk API for the Splunk MCP demonstration.",
-    version="0.9.2",
+    version="0.9.3",
 )
 
 static_dir = Path(__file__).parent / "static"
@@ -128,6 +129,8 @@ class LLMConnectionUpdate(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     model: str | None = None
+    verify_ssl: bool | None = None
+    ca_bundle_path: str | None = None
     clear_api_key: bool = False
 
     def as_store_update(self) -> dict[str, Any]:
@@ -137,6 +140,8 @@ class LLMConnectionUpdate(BaseModel):
             "openai_base_url": payload.get("base_url"),
             "openai_api_key": payload.get("api_key"),
             "openai_model": payload.get("model"),
+            "openai_verify_ssl": payload.get("verify_ssl"),
+            "openai_ca_bundle_path": payload.get("ca_bundle_path"),
             "clear_openai_api_key": payload.get("clear_api_key", False),
         }
 
@@ -289,6 +294,7 @@ async def test_llm_settings(update: LLMConnectionUpdate) -> dict[str, Any]:
             base_url=runtime_base_url,
             timeout=20.0,
             max_retries=0,
+            http_client=openai_http_client(candidate.openai_verify, timeout=20.0),
         ) as client:
             response = await client.responses.create(
                 model=candidate.openai_model,
@@ -311,6 +317,7 @@ async def test_llm_settings(update: LLMConnectionUpdate) -> dict[str, Any]:
                 "runtime_base_url": runtime_base_url,
                 "container_host_routed": routed,
                 "model": candidate.openai_model,
+                "tls_verification": candidate.openai_verify is not False,
                 "response_id": response.id,
             },
         }
@@ -322,6 +329,13 @@ async def test_llm_settings(update: LLMConnectionUpdate) -> dict[str, Any]:
         runtime_url = external_runtime_url(configured_url) if configured_url else configured_url
         details = exception_details(exc, secrets=(candidate_key or "",))
         detail = "; ".join(details)
+        tls_hint = ""
+        if "CERTIFICATE_VERIFY_FAILED" in detail or "certificate verify failed" in detail.lower():
+            tls_hint = (
+                " The container does not trust the certificate issuer. Add the issuing PEM "
+                "certificate under LLM TLS as a custom CA bundle, or disable verification only "
+                "for a controlled demo environment."
+            )
         route_message = (
             " Docker routed the configured localhost address through host.docker.internal."
             if runtime_url and runtime_url != configured_url
@@ -331,7 +345,7 @@ async def test_llm_settings(update: LLMConnectionUpdate) -> dict[str, Any]:
             "status": "error",
             "message": (
                 f"LLM connection test failed at {safe_endpoint(runtime_url)}: {detail}."
-                f"{route_message}"
+                f"{route_message}{tls_hint}"
             ),
         }
 

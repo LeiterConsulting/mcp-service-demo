@@ -12,6 +12,7 @@ from typing import Any
 from openai import AsyncOpenAI
 
 from .config import Settings
+from .llm_client import openai_http_client
 from .mcp_client import MCPBroker, MCPTool
 from .networking import external_runtime_url
 from .splunk_mcp_adapter import SplunkCall, SplunkMCPAdapter
@@ -635,6 +636,10 @@ class DemoAgent:
             base_url=external_runtime_url(self.settings.openai_base_url),
             timeout=self.settings.openai_timeout_seconds,
             max_retries=self.settings.openai_max_retries,
+            http_client=openai_http_client(
+                self.settings.openai_verify,
+                timeout=self.settings.openai_timeout_seconds,
+            ),
         ) as client:
             for _ in range(self.settings.openai_max_iterations):
                 response = await client.responses.create(

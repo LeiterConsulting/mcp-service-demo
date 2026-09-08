@@ -18,6 +18,8 @@ def base_settings(monkeypatch, tmp_path):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
     monkeypatch.setenv("OPENAI_MODEL", "gpt-5-mini")
+    monkeypatch.delenv("OPENAI_VERIFY_SSL", raising=False)
+    monkeypatch.delenv("OPENAI_CA_BUNDLE", raising=False)
     monkeypatch.setenv("SPLUNK_DATA_MODE", "fixture")
     monkeypatch.setenv("SPLUNK_MCP_URL", "https://environment-mcp.example/mcp")
     monkeypatch.setenv("SPLUNK_MCP_TOKEN", "environment-mcp-token")
@@ -200,6 +202,8 @@ def test_saved_llm_connection_is_encrypted_masked_and_applied(monkeypatch, tmp_p
             "openai_base_url": "https://llm.example/v1/",
             "openai_api_key": "saved-llm-secret",
             "openai_model": "demo-model",
+            "openai_verify_ssl": True,
+            "openai_ca_bundle_path": "/certs/company-root.pem",
         },
     )
     exported = connection_store.safe_export_llm(base)
@@ -208,10 +212,25 @@ def test_saved_llm_connection_is_encrypted_masked_and_applied(monkeypatch, tmp_p
     assert effective.openai_base_url == "https://llm.example/v1"
     assert effective.openai_api_key == "saved-llm-secret"
     assert effective.openai_model == "demo-model"
+    assert effective.openai_verify == "/certs/company-root.pem"
     assert exported["api_key"] == MASK
     assert exported["api_key_configured"] is True
     assert exported["active_mode"] == "openai"
+    assert exported["verify_ssl"] is True
+    assert exported["ca_bundle_path"] == "/certs/company-root.pem"
     assert b"saved-llm-secret" not in connection_store.config_path.read_bytes()
+
+
+def test_llm_tls_environment_allows_custom_ca_or_controlled_disable(monkeypatch, tmp_path):
+    monkeypatch.setenv("DEMO_DATABASE_PATH", str(tmp_path / "demo.db"))
+    monkeypatch.setenv("OPENAI_VERIFY_SSL", "false")
+    monkeypatch.delenv("OPENAI_CA_BUNDLE", raising=False)
+
+    assert get_environment_settings().openai_verify is False
+
+    monkeypatch.setenv("OPENAI_CA_BUNDLE", "/app/certs/company-root.pem")
+
+    assert get_environment_settings().openai_verify == "/app/certs/company-root.pem"
 
 
 def test_blank_llm_api_key_preserves_existing_value(monkeypatch, tmp_path):
@@ -241,6 +260,11 @@ def test_portable_profile_round_trip_includes_secrets_tuning_and_ca(monkeypatch,
         "-----BEGIN CERTIFICATE-----\nportable-demo-ca\n-----END CERTIFICATE-----\n",
         encoding="utf-8",
     )
+    llm_ca_path = tmp_path / "llm-ca.pem"
+    llm_ca_path.write_text(
+        "-----BEGIN CERTIFICATE-----\nportable-llm-ca\n-----END CERTIFICATE-----\n",
+        encoding="utf-8",
+    )
     source_store.save(
         base,
         {
@@ -259,6 +283,8 @@ def test_portable_profile_round_trip_includes_secrets_tuning_and_ca(monkeypatch,
             "openai_base_url": "https://llm.example/v1",
             "openai_api_key": "portable-llm-secret",
             "openai_model": "portable-model",
+            "openai_verify_ssl": True,
+            "openai_ca_bundle_path": str(llm_ca_path),
             "openai_max_tool_calls": 19,
             "openai_max_parallel_tools": 2,
             "splunk_app": "portable_app",
@@ -282,7 +308,7 @@ def test_portable_profile_round_trip_includes_secrets_tuning_and_ca(monkeypatch,
     assert preview["llm"]["model"] == "portable-model"
     assert preview["audience"] == "security"
     assert preview["credential_count"] == 4
-    assert preview["custom_ca_bundles"] == 1
+    assert preview["custom_ca_bundles"] == 2
 
     destination_store = SplunkConnectionStore(
         tmp_path / "destination" / "profile.enc",
@@ -308,6 +334,12 @@ def test_portable_profile_round_trip_includes_secrets_tuning_and_ca(monkeypatch,
     imported_ca = Path(effective.splunk_mcp_verify)
     assert imported_ca.parent == destination_store.config_path.parent / "certificates"
     assert imported_ca.read_text(encoding="utf-8") == ca_path.read_text(encoding="utf-8")
+    assert isinstance(effective.openai_verify, str)
+    imported_llm_ca = Path(effective.openai_verify)
+    assert imported_llm_ca.parent == destination_store.config_path.parent / "certificates"
+    assert imported_llm_ca.read_text(encoding="utf-8") == llm_ca_path.read_text(
+        encoding="utf-8"
+    )
     assert b"portable-llm-secret" not in destination_store.config_path.read_bytes()
 
 

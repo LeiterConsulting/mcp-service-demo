@@ -63,6 +63,7 @@ class Settings:
     openai_base_url: str
     openai_api_key: str | None
     openai_model: str
+    openai_verify: bool | str
     openai_timeout_seconds: float
     openai_max_retries: int
     openai_max_iterations: int
@@ -145,6 +146,7 @@ def get_environment_settings() -> Settings:
         openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/"),
         openai_api_key=openai_api_key,
         openai_model=os.getenv("OPENAI_MODEL", "gpt-5-mini"),
+        openai_verify=_tls_verify("OPENAI"),
         openai_timeout_seconds=max(10.0, float(os.getenv("OPENAI_TIMEOUT_SECONDS", "60"))),
         openai_max_retries=max(0, int(os.getenv("OPENAI_MAX_RETRIES", "1"))),
         openai_max_iterations=max(2, int(os.getenv("OPENAI_MAX_ITERATIONS", "8"))),

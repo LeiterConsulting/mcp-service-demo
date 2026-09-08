@@ -10,10 +10,17 @@ def test_llm_connection_test_reports_root_cause_and_runtime_endpoint(monkeypatch
     monkeypatch.setenv("DEMO_SPLUNK_CONFIG_PATH", str(tmp_path / "config" / "profile.enc"))
     monkeypatch.setenv("DEMO_SPLUNK_CONFIG_KEY_PATH", str(tmp_path / "config" / ".profile.key"))
     monkeypatch.setenv("DEMO_CONTAINERIZED", "true")
+    captured = {}
+    transport = object()
+
+    def fake_http_client(verify, *, timeout):
+        captured["verify"] = verify
+        captured["timeout"] = timeout
+        return transport
 
     class FailingOpenAI:
-        def __init__(self, **_kwargs):
-            pass
+        def __init__(self, **kwargs):
+            captured["client"] = kwargs
 
         async def __aenter__(self):
             root = OSError("certificate verify failed")
@@ -25,6 +32,7 @@ def test_llm_connection_test_reports_root_cause_and_runtime_endpoint(monkeypatch
             return None
 
     monkeypatch.setattr(api_module, "AsyncOpenAI", FailingOpenAI)
+    monkeypatch.setattr(api_module, "openai_http_client", fake_http_client)
     response = TestClient(api_module.app).post(
         "/api/settings/llm/test",
         json={
@@ -32,6 +40,7 @@ def test_llm_connection_test_reports_root_cause_and_runtime_endpoint(monkeypatch
             "base_url": "https://localhost:11434/v1",
             "api_key": "test-secret-key",
             "model": "local-model",
+            "verify_ssl": False,
         },
     )
 
@@ -42,3 +51,7 @@ def test_llm_connection_test_reports_root_cause_and_runtime_endpoint(monkeypatch
     assert "https://host.docker.internal:11434/v1" in payload["message"]
     assert "Connection error." not in payload["message"]
     assert "test-secret-key" not in payload["message"]
+    assert "Add the issuing PEM certificate" in payload["message"]
+    assert captured["verify"] is False
+    assert captured["timeout"] == 20.0
+    assert captured["client"]["http_client"] is transport

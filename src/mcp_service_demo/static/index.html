@@ -8,7 +8,7 @@
       content="A live demonstration of an agent using MCP to investigate Splunk telemetry and enrich a service ticket."
     />
     <title>MCP Service Demo</title>
-    <link rel="stylesheet" href="/static/styles.css?v=0.9.2" />
+    <link rel="stylesheet" href="/static/styles.css?v=0.9.3" />
   </head>
   <body>
     <div class="app-shell">
@@ -470,6 +470,18 @@
               <input class="settings-input" id="llm-api-key" type="password" autocomplete="new-password" />
               <small class="field-hint" id="llm-api-key-hint">Required only when LLM-assisted mode is enabled.</small>
 
+              <div class="mcp-security-row llm-security-row">
+                <label class="check-row compact" for="llm-verify">
+                  <input id="llm-verify" type="checkbox" checked />
+                  <span><b>Verify TLS certificate</b><small>Recommended. Keep enabled for OpenAI and remote providers.</small></span>
+                </label>
+                <div>
+                  <label class="field-label" for="llm-ca">Custom CA bundle <span>optional</span></label>
+                  <input class="settings-input" id="llm-ca" type="text" placeholder="/app/certs/company-root.pem" />
+                  <small class="field-hint">For Docker, place the issuing PEM certificate in <code>certs/</code> and use its <code>/app/certs/…</code> path.</small>
+                </div>
+              </div>
+
               <label class="check-row" id="clear-llm-key-row" for="clear-llm-api-key" hidden>
                 <input id="clear-llm-api-key" type="checkbox" />
                 <span><b>Remove the saved API key</b><small>The agent will return to Guided mode after the key is removed.</small></span>
@@ -494,7 +506,7 @@
           </div>
 
           <footer class="settings-footer">
-            <p>API keys are encrypted locally and are never returned by the API.</p>
+            <p>API keys are encrypted locally. Disabling TLS verification is for controlled demo environments only.</p>
             <div>
               <button class="button secondary" type="button" id="test-llm-button">Test model</button>
               <button class="button primary" type="submit" id="save-llm-button">Save agent mode</button>
@@ -648,6 +660,6 @@
 
       <div class="toast-region" id="toast-region" aria-live="polite"></div>
     </div>
-    <script src="/static/app.js?v=0.9.2" defer></script>
+    <script src="/static/app.js?v=0.9.3" defer></script>
   </body>
 </html>

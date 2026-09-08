@@ -916,6 +916,8 @@ function renderLLMSettings(settings) {
   $("#llm-settings-source").textContent = settings.source || "Environment defaults";
   $("#llm-base-url").value = settings.base_url || "https://api.openai.com/v1";
   $("#llm-model").value = settings.model || "gpt-5-mini";
+  $("#llm-verify").checked = settings.verify_ssl !== false;
+  $("#llm-ca").value = settings.ca_bundle_path || "";
   $("#llm-api-key").value = "";
   $("#llm-api-key").placeholder = settings.api_key_configured
     ? "Configured — leave blank to keep"
@@ -942,6 +944,8 @@ function llmSettingsPayload() {
     base_url: $("#llm-base-url").value.trim(),
     api_key: $("#llm-api-key").value.trim(),
     model: $("#llm-model").value.trim(),
+    verify_ssl: $("#llm-verify").checked,
+    ca_bundle_path: $("#llm-ca").value.trim(),
     clear_api_key: clearApiKey,
   };
 }
