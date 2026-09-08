@@ -16,6 +16,7 @@ SplunkCall = Callable[[str, dict[str, Any], str], Awaitable[Any]]
 
 _SAFE_VALUE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
 _KEYWORD = re.compile(r"[A-Za-z0-9_.:-]+")
+_BOOLEAN_KEYWORDS = {"AND", "OR", "NOT"}
 _MIN_SCENARIO_VERIFICATION_SECONDS = 90.0
 
 
@@ -203,24 +204,33 @@ class SplunkMCPAdapter:
         normalized = _safe_value(service, "service")
         window = min(max(minutes, 5), 90)
         base = self._active_base(normalized)
-        rows = await self._query(
+        metric_rows = await self._query(
             (
                 f"{base} event_type=request earliest=-{window * 2}m "
                 f'| eval period=if(_time>=relative_time(now(),"-{window}m"),"current","baseline") '
                 "| stats count as requests count(eval(tonumber(status_code)>=500)) as errors "
                 "perc50(duration_ms) as p50_ms perc95(duration_ms) as p95_ms by period "
                 "| eval error_rate_pct=if(requests=0,0,round(errors*100/requests,1)), "
-                'row_kind="metric" '
-                f"| append [ {base} event_type=deployment earliest=-{window + 10}m "
-                "| sort 0 - _time | head 10 "
-                '| eval row_kind="change" '
-                "| table row_kind _time message version host ]"
+                'row_kind="metric"'
             ),
             title="Check service health",
             call=call,
             earliest_time=f"-{window * 2}m",
-            row_limit=100,
+            row_limit=10,
         )
+        change_rows = await self._query(
+            (
+                f"{base} event_type=deployment earliest=-{window + 10}m "
+                "| sort 0 - _time | head 10 "
+                '| eval row_kind="change" '
+                "| table row_kind _time message version host"
+            ),
+            title="Find recent changes",
+            call=call,
+            earliest_time=f"-{window + 10}m",
+            row_limit=10,
+        )
+        rows = [*metric_rows, *change_rows]
         metrics = _metrics_by_period(rows)
         current = metrics.get("current", _empty_metrics())
         baseline = metrics.get("baseline", _empty_metrics())
@@ -328,11 +338,11 @@ class SplunkMCPAdapter:
         normalized = _safe_value(service, "service")
         window = min(max(minutes, 5), 90)
         result_limit = min(max(limit, 1), 50)
-        terms = _KEYWORD.findall(keywords)[:8]
-        term_clause = " ".join(_spl_literal(term) for term in terms)
+        term_clause = _keyword_clause(keywords)
         rows = await self._query(
             (
-                f"{self._active_base(normalized)} earliest=-{window}m {term_clause} "
+                f"{self._active_base(normalized)} event_type=request "
+                f"earliest=-{window}m {term_clause} "
                 '| eval trace_priority=if(match(trace_id,"^tr-hot-"),0,1) '
                 f"| sort 0 trace_priority - _time | head {result_limit} "
                 "| table _time service level event_type message status_code duration_ms "
@@ -408,6 +418,29 @@ def _safe_value(value: str, label: str) -> str:
 
 def _spl_literal(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _keyword_clause(keywords: str) -> str:
+    terms: list[str] = []
+    seen: set[str] = set()
+    for term in _KEYWORD.findall(keywords)[:12]:
+        lowered = term.lower()
+        if term.upper() in _BOOLEAN_KEYWORDS or lowered in seen:
+            continue
+        terms.append(term)
+        seen.add(lowered)
+    clauses: list[str] = []
+    for term in terms[:8]:
+        lowered = term.lower()
+        if lowered in {"error", "errors"}:
+            clauses.append('(level="ERROR" OR message="*error*")')
+        elif lowered in {"5xx", "5x"}:
+            clauses.append("status_code>=500")
+        elif re.fullmatch(r"[1-5][0-9]{2}", term):
+            clauses.append(f"status_code={term}")
+        else:
+            clauses.append(f"message={_spl_literal(f'*{term}*')}")
+    return f"({' OR '.join(clauses)})" if clauses else ""
 
 
 def _integer(value: Any) -> int:

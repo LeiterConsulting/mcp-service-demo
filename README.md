@@ -195,6 +195,20 @@ Common first-run failures usually identify one boundary:
   Splunk** under **Setup → Splunk**, then select **Save connection** before resetting.
 - **MCP cannot connect:** confirm port `8089` is published and the MCP URL is reachable from Docker.
 - **MCP returns unauthorized:** use the MCP bearer token, not the HEC token.
+- **HEC reports `host.docker.internal:8088` as unreachable:** Splunk's HEC listener may be enabled
+  inside its container without port `8088` being published. Either publish `8088:8088`, or connect
+  the Splunk and demo containers to a shared user-defined Docker network and use the Splunk
+  container name in the HEC URL. For example:
+
+  ```bash
+  docker network create mcp-splunk-demo
+  docker network connect mcp-splunk-demo splunk-ubuntu
+  docker network connect mcp-splunk-demo mcp-service-demo-demo-1
+  ```
+
+  Then configure `https://splunk-ubuntu:8088/services/collector/event`. Replace the example
+  container names with those reported by `docker ps`. A manually attached network must be
+  reconnected if either container is recreated.
 - **HEC rejects the batch:** confirm HEC is enabled and its token can write to `mcp_demo`.
 - **Events publish but cannot be found:** grant the MCP/search identity access to `mcp_demo` and the
   `mcp_service_demo` app.

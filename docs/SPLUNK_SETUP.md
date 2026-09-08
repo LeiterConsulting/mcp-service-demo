@@ -85,13 +85,13 @@ the three responsibilities:
 - **Direct REST access** — optional management API fallback for the bundled local MCP server;
 - **Scenario publisher** — HEC URL, masked HEC token, TLS verification, and an optional CA bundle.
 
-Use **Test MCP endpoint** to prove tool discovery, then **Test live search** before saving. A
-successful search test uses either the MCP query tool or the configured REST fallback and reports
-whether a deterministic demo run is already searchable. Before the first seed, a message that the
-connection works and the scenario still needs to be published is expected. Select **Save
-connection** before using **Setup → Demo controls → Reset demo**. Blank token fields preserve the current secret. Saved secrets are encrypted
-locally and are never returned by the settings API. The new profile is picked up without restarting
-the demo.
+Use **Test MCP endpoint** to prove tool discovery, then **Test live paths** before saving. The live
+test checks both the configured search path and the HEC listener without publishing events, then
+reports whether a deterministic demo run is already searchable. Before the first seed, a message
+that the connection works and the scenario still needs to be published is expected. Select **Save
+connection** before using **Setup → Demo controls → Reset demo**. Blank token fields preserve the
+current secret. Saved secrets are encrypted locally and are never returned by the settings API. The
+new profile is picked up without restarting the demo.
 
 The encrypted profile and its local key live beside `demo.db` in the `data` directory, which is a
 named volume in the supplied Docker Compose configuration. Treat that directory as sensitive and
@@ -171,6 +171,20 @@ file is rejected before the active profile is changed.
 
 ## Troubleshooting
 
+- **HEC is enabled but `host.docker.internal:8088` is unreachable:** enabling HEC in Splunk does
+  not publish the port from a Splunk container. Publish `8088:8088` when creating that container.
+  If recreating Splunk would risk an existing lab, connect the current containers directly instead:
+
+  ```bash
+  docker network create mcp-splunk-demo
+  docker network connect mcp-splunk-demo splunk-ubuntu
+  docker network connect mcp-splunk-demo mcp-service-demo-demo-1
+  ```
+
+  Use `https://splunk-ubuntu:8088/services/collector/event` as the HEC URL and leave TLS verification
+  disabled only for the self-signed lab certificate. Substitute the names shown by `docker ps`.
+  Docker drops a manually attached network when a container is recreated, so reconnect a rebuilt
+  container or declare the shared network in its Compose configuration.
 - **Search works but the scenario is not found:** confirm the HEC token can write to `mcp_demo`, the
   source type is `mcp:demo:event`, and the MCP or REST identity can search that index.
 - **Certificate verification fails:** install the issuing CA and configure the relevant CA bundle.

@@ -170,7 +170,9 @@ async def test_guided_agent_uses_real_splunk_query_tool_when_available(tmp_path,
                 return await context_broker.call(server, tool, arguments)
             assert tool == "splunk_run_query"
             query = arguments["query"]
-            if 'service="inventory-api"' in query:
+            if 'service="inventory-api"' in query and "event_type=deployment" in query:
+                rows = []
+            elif 'service="inventory-api"' in query:
                 rows = [
                     {
                         "row_kind": "metric",
@@ -218,6 +220,16 @@ async def test_guided_agent_uses_real_splunk_query_tool_when_available(tmp_path,
                         "version": "4.18.2",
                         "host": "deploy-01",
                     },
+                ]
+            elif "event_type=deployment" in query:
+                rows = [
+                    {
+                        "row_kind": "change",
+                        "_time": "2026-09-01T12:00:00",
+                        "message": "deployed checkout-api 4.18.2",
+                        "version": "4.18.2",
+                        "host": "deploy-01",
+                    }
                 ]
             elif " by period " in query:
                 rows = [
@@ -276,13 +288,30 @@ async def test_guided_agent_uses_real_splunk_query_tool_when_available(tmp_path,
     updated = store.get_ticket("INC-1042")
 
     splunk_events = [event for event in result.timeline if event.server == "splunk"]
-    assert [event.tool for event in splunk_events] == ["splunk_run_query"] * 5
+    assert [event.tool for event in splunk_events] == ["splunk_run_query"] * 7
     assert all(event.arguments["app"] == "mcp_service_demo" for event in splunk_events)
+    assert all("| append [" not in event.arguments["query"] for event in splunk_events)
+    log_query = next(
+        event.arguments["query"]
+        for event in splunk_events
+        if event.title == "Find correlated errors"
+    )
+    assert 'level="ERROR"' in log_query
+    assert "status_code=503" in log_query
     assert result.ticket_updated is True
     assert updated is not None
     assert "18.0%" in updated["notes"][-1]["body"]
     assert "connection pool" in updated["notes"][-1]["body"]
     assert "inventory-api is healthy" in updated["notes"][-1]["body"]
+
+
+def test_splunk_keyword_clause_preserves_boolean_search_intent():
+    clause = splunk_mcp_adapter_module._keyword_clause("ERROR OR timeout OR 5xx")
+
+    assert 'level="ERROR"' in clause
+    assert 'message="*timeout*"' in clause
+    assert "status_code>=500" in clause
+    assert '"OR"' not in clause
 
 
 async def test_live_splunk_status_distinguishes_searchable_from_fresh(tmp_path, monkeypatch):
