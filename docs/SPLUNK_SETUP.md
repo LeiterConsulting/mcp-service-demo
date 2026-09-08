@@ -14,7 +14,9 @@ run and then filter on that identifier, so an old rehearsal cannot contaminate t
 
 ## 1. Install the companion app
 
-From the repository root:
+Download the packaged app from the
+[`latest release`](https://github.com/LeiterConsulting/mcp-service-demo/releases/latest), or
+build it from a native development environment at the repository root:
 
 ```bash
 mcp-service-demo package-splunk-app
@@ -22,6 +24,10 @@ mcp-service-demo package-splunk-app
 
 This creates `dist/mcp_service_demo-0.3.0.tar.gz`. In Splunk Web, open **Apps → Manage Apps →
 Install app from file**, upload the archive, and restart Splunk if prompted.
+
+Confirm that **MCP Service Demo** appears in the Apps menu and that `mcp_demo` appears under
+**Settings → Indexes**. The companion app provides the demo data contract and dashboard; it does
+not create a Splunk MCP endpoint.
 
 The app supplies:
 
@@ -36,8 +42,16 @@ and management API process approved for that tenant.
 
 ## 2. Create HEC and search credentials
 
-Create an HTTP Event Collector token that is allowed to write to `mcp_demo`. The loader sends
-structured events to `/services/collector/event` with `Authorization: Splunk <HEC token>`.
+In Splunk Web, open **Settings → Data Inputs → HTTP Event Collector**. Enable HEC under **Global
+Settings**, then create a token named `MCP Service Demo` with:
+
+- source type selection set to **Automatic** because each payload declares `mcp:demo:event`;
+- app context `mcp_service_demo` when that option is available; and
+- `mcp_demo` selected as an allowed and default index.
+
+Copy the token after creating it. The loader sends structured events to
+`/services/collector/event` with `Authorization: Splunk <HEC token>`. HEC is a separate write path;
+do not reuse the HEC token as the MCP bearer or REST search token.
 
 When using Splunk's MCP endpoint, its bearer token is the search identity and direct REST
 credentials are not required. If you use the bundled local Splunk MCP server instead, it needs one
@@ -48,6 +62,16 @@ of the following identities for the management REST API:
 - `SPLUNK_USERNAME` and `SPLUNK_PASSWORD` basic authentication for a local lab.
 
 Use a narrowly scoped demo account and keep its secrets in `.env`, which is ignored by Git.
+
+There are two supported Splunk read paths:
+
+| Read path | MCP connection | Additional credential |
+| --- | --- | --- |
+| Existing Splunk MCP | `https://<splunk-host>:8089/services/mcp` plus its bearer token | No direct REST credential required |
+| Bundled demo MCP bridge | `http://127.0.0.1:8101/mcp` with no token | Splunk REST URL and a search-capable REST token |
+
+Both paths are MCP interactions from the agent's perspective. The bundled bridge translates its
+scoped MCP tools into management REST searches when Splunk does not provide an MCP endpoint.
 
 ## 3. Configure live mode
 
@@ -63,7 +87,9 @@ the three responsibilities:
 
 Use **Test MCP endpoint** to prove tool discovery, then **Test live search** before saving. A
 successful search test uses either the MCP query tool or the configured REST fallback and reports
-whether a deterministic demo run is already searchable. Blank token fields preserve the current secret. Saved secrets are encrypted
+whether a deterministic demo run is already searchable. Before the first seed, a message that the
+connection works and the scenario still needs to be published is expected. Select **Save
+connection** before using **Setup → Demo controls → Reset demo**. Blank token fields preserve the current secret. Saved secrets are encrypted
 locally and are never returned by the settings API. The new profile is picked up without restarting
 the demo.
 
