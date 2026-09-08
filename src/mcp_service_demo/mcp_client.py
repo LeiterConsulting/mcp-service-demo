@@ -5,13 +5,13 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
 
 import httpx2
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.server.mcpserver import MCPServer
 
+from .diagnostics import exception_details, safe_endpoint
 from .networking import external_runtime_url
 
 
@@ -140,36 +140,9 @@ class MCPBroker:
 def _remote_error_message(
     target: MCPRemoteTarget, runtime_url: str, error: BaseException
 ) -> str:
-    details = _exception_details(error, target.token)
+    details = exception_details(error, secrets=(target.token or "",))
     detail = "; ".join(details) if details else error.__class__.__name__
-    message = f"Unable to connect to MCP endpoint {_safe_endpoint(runtime_url)}: {detail}"
+    message = f"Unable to connect to MCP endpoint {safe_endpoint(runtime_url)}: {detail}"
     if target.routed_through_container_host:
         message += " (Docker routed the configured localhost address through host.docker.internal)"
     return message
-
-
-def _exception_details(error: BaseException, token: str | None) -> list[str]:
-    if isinstance(error, BaseExceptionGroup):
-        details: list[str] = []
-        for nested in error.exceptions:
-            for detail in _exception_details(nested, token):
-                if detail not in details:
-                    details.append(detail)
-        return details
-
-    message = " ".join(str(error).split()).strip()
-    if token and token in message:
-        message = message.replace(token, "***")
-    label = error.__class__.__name__
-    return [f"{label}: {message}"[:600] if message else label]
-
-
-def _safe_endpoint(url: str) -> str:
-    try:
-        parsed = urlsplit(url)
-        hostname = parsed.hostname or "configured-host"
-        host = f"[{hostname}]" if ":" in hostname else hostname
-        netloc = f"{host}:{parsed.port}" if parsed.port is not None else host
-        return urlunsplit((parsed.scheme, netloc, parsed.path, "", ""))
-    except ValueError:
-        return "the configured URL"

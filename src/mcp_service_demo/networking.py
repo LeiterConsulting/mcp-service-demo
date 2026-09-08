@@ -16,12 +16,16 @@ def external_runtime_url(configured_url: str) -> str:
     """Route host-local service URLs out of the demo container while preserving saved input."""
     if not is_containerized():
         return configured_url
-    parsed = urlsplit(configured_url)
+    try:
+        parsed = urlsplit(configured_url)
+        parsed_port = parsed.port
+    except ValueError:
+        return configured_url
     if (parsed.hostname or "").lower() not in _LOOPBACK_HOSTS:
         return configured_url
 
     userinfo = parsed.netloc.rsplit("@", 1)[0] + "@" if "@" in parsed.netloc else ""
-    port = f":{parsed.port}" if parsed.port is not None else ""
+    port = f":{parsed_port}" if parsed_port is not None else ""
     return urlunsplit(
         (
             parsed.scheme,

@@ -69,6 +69,17 @@ API key, and connection test. A balanced runtime profile bounds retries and down
 while leaving enough turns and tool calls for the complete ticket workflow. Guided mode remains the
 presentation-safe fallback if the model endpoint is unavailable.
 
+For OpenAI cloud, use `https://api.openai.com/v1` as the endpoint. If **Test model** reports a
+network or TLS failure, this credential-free check runs from the same container network path:
+
+```bash
+docker compose exec demo python -c "import httpx; print(httpx.get('https://api.openai.com/v1/models', timeout=15).status_code)"
+```
+
+An HTTP `401` is expected without a key and proves DNS, outbound HTTPS, and certificate validation
+are working. A socket, proxy, or certificate exception identifies the machine-level path that needs
+attention. The in-app test reports the nested cause and the effective Docker runtime URL.
+
 The default `SPLUNK_DATA_MODE=fixture` is the zero-dependency path. To use a real endpoint,
 install the companion Splunk app, open **Setup → Splunk** in the demo header, enter the MCP and HEC
 connections, and switch to live mode. Direct REST credentials are only needed for the bundled

@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from .agent import DemoAgent
 from .config import Settings, get_environment_settings, get_settings
 from .connection_settings import SplunkConnectionStore
+from .diagnostics import exception_details, safe_endpoint
 from .mcp_client import MCPBroker, MCPRemoteTarget
 from .networking import external_runtime_url, is_bundled_mcp_url
 from .scenario import seed_splunk_scenario_via_mcp
@@ -59,7 +60,7 @@ def _runtime_agent(on_event: Callable[[Any], Awaitable[None] | None] | None = No
 app = FastAPI(
     title="MCP Service Demo",
     description="Agent host and service-desk API for the Splunk MCP demonstration.",
-    version="0.9.1",
+    version="0.9.2",
 )
 
 static_dir = Path(__file__).parent / "static"
@@ -282,9 +283,10 @@ async def test_llm_settings(update: LLMConnectionUpdate) -> dict[str, Any]:
         candidate = connection_store.preview(base, update.as_store_update())
         if not candidate.openai_api_key:
             raise ValueError("Enter an API key before testing the model connection")
+        runtime_base_url = external_runtime_url(candidate.openai_base_url)
         async with AsyncOpenAI(
             api_key=candidate.openai_api_key,
-            base_url=external_runtime_url(candidate.openai_base_url),
+            base_url=runtime_base_url,
             timeout=20.0,
             max_retries=0,
         ) as client:
@@ -294,22 +296,43 @@ async def test_llm_settings(update: LLMConnectionUpdate) -> dict[str, Any]:
                 max_output_tokens=16,
                 store=False,
             )
+        routed = runtime_base_url != candidate.openai_base_url
+        route_message = (
+            " Docker routed localhost through host.docker.internal." if routed else ""
+        )
         return {
             "status": "success",
             "message": (
                 f"Connected to {candidate.openai_model}. "
-                "LLM-assisted mode can use the discovered MCP tools."
+                f"LLM-assisted mode can use the discovered MCP tools.{route_message}"
             ),
             "details": {
                 "base_url": candidate.openai_base_url,
+                "runtime_base_url": runtime_base_url,
+                "container_host_routed": routed,
                 "model": candidate.openai_model,
                 "response_id": response.id,
             },
         }
     except Exception as exc:
+        candidate_key = candidate.openai_api_key if "candidate" in locals() else None
+        configured_url = (
+            candidate.openai_base_url if "candidate" in locals() else update.base_url or ""
+        )
+        runtime_url = external_runtime_url(configured_url) if configured_url else configured_url
+        details = exception_details(exc, secrets=(candidate_key or "",))
+        detail = "; ".join(details)
+        route_message = (
+            " Docker routed the configured localhost address through host.docker.internal."
+            if runtime_url and runtime_url != configured_url
+            else ""
+        )
         return {
             "status": "error",
-            "message": str(exc),
+            "message": (
+                f"LLM connection test failed at {safe_endpoint(runtime_url)}: {detail}."
+                f"{route_message}"
+            ),
         }
 
 
