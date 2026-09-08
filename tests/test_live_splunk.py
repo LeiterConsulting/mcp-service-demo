@@ -6,10 +6,11 @@ from dataclasses import replace
 from datetime import UTC, datetime
 
 import httpx
+import pytest
 
 from mcp_service_demo.cli import package_splunk_app
 from mcp_service_demo.config import get_settings
-from mcp_service_demo.scenario import SplunkHECClient, seed_splunk_scenario
+from mcp_service_demo.scenario import SplunkHECClient, SplunkHECError, seed_splunk_scenario
 from mcp_service_demo.splunk_backend import LiveSplunkBackend, SplunkRestClient
 from mcp_service_demo.storage import DemoStore
 
@@ -161,6 +162,55 @@ def test_hec_payload_includes_scenario_and_run_metadata(monkeypatch, tmp_path):
     assert body["sourcetype"] == "mcp:demo:event"
     assert body["event"]["scenario_id"] == "checkout-degradation-v1"
     assert body["event"]["demo_run_id"] == "demo-123"
+
+
+def test_hec_health_checks_runtime_listener_without_publishing(monkeypatch, tmp_path):
+    settings = live_settings(monkeypatch, tmp_path)
+    monkeypatch.setenv("DEMO_CONTAINERIZED", "true")
+    settings = replace(settings, splunk_hec_url="https://localhost:8088")
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json={"text": "HEC is healthy", "code": 17})
+
+    health = SplunkHECClient(
+        settings, transport=httpx.MockTransport(handler)
+    ).health()
+
+    assert health["ready"] is True
+    assert health["endpoint"] == "https://localhost:8088"
+    assert health["runtime_endpoint"] == (
+        "https://host.docker.internal:8088/services/collector/health"
+    )
+    assert captured[0].method == "GET"
+    assert captured[0].headers["Authorization"] == "Splunk hec-secret"
+
+
+def test_hec_publish_reports_routed_network_failure(monkeypatch, tmp_path):
+    settings = live_settings(monkeypatch, tmp_path)
+    monkeypatch.setenv("DEMO_CONTAINERIZED", "true")
+    settings = replace(settings, splunk_hec_url="https://localhost:8088")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("network is unreachable", request=request)
+
+    publisher = SplunkHECClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(SplunkHECError, match="host.docker.internal:8088") as error:
+        publisher.publish(
+            [
+                {
+                    "timestamp": datetime(2026, 9, 1, 12, tzinfo=UTC).isoformat(),
+                    "host": "checkout-api-1",
+                    "message": "request failed",
+                }
+            ],
+            "demo-123",
+        )
+
+    assert "configured as https://localhost:8088" in str(error.value)
+    assert "ConnectError: network is unreachable" in str(error.value)
 
 
 def test_seed_resets_ticket_data_and_publishes_full_event_stream(monkeypatch, tmp_path):

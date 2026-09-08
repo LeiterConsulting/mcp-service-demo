@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 
 from .config import Settings
+from .diagnostics import exception_details, safe_endpoint
 from .mcp_client import MCPBroker
 from .networking import external_runtime_url
 from .splunk_backend import LiveSplunkBackend, SplunkConnectionError, SplunkRestClient
@@ -43,6 +44,40 @@ class SplunkHECClient:
             return f"{base}/event"
         return f"{base}/services/collector/event"
 
+    @property
+    def health_endpoint(self) -> str:
+        return f"{self.endpoint.removesuffix('/event')}/health"
+
+    def health(self) -> dict[str, Any]:
+        with httpx.Client(
+            headers={"Authorization": f"Splunk {self.settings.splunk_hec_token}"},
+            verify=self.settings.splunk_hec_verify,
+            timeout=self.settings.splunk_search_timeout_seconds,
+            transport=self.transport,
+        ) as client:
+            try:
+                response = client.get(self.health_endpoint)
+            except httpx.HTTPError as exc:
+                raise self._connection_error("check", self.health_endpoint, exc) from exc
+        if not response.is_success:
+            detail = response.text.strip().replace("\n", " ")[:400]
+            raise SplunkHECError(
+                f"Splunk HEC health check returned HTTP {response.status_code}. {detail}"
+            )
+        try:
+            payload = response.json()
+        except json.JSONDecodeError:
+            payload = {}
+        return {
+            "ready": True,
+            "endpoint": safe_endpoint(self.settings.splunk_hec_url or ""),
+            "runtime_endpoint": safe_endpoint(self.health_endpoint),
+            "status_code": response.status_code,
+            "message": payload.get("text", "HEC listener is reachable")
+            if isinstance(payload, dict)
+            else "HEC listener is reachable",
+        }
+
     def publish(self, events: list[dict[str, Any]], run_id: str) -> int:
         published = 0
         batch_size = self.settings.splunk_hec_batch_size
@@ -58,10 +93,26 @@ class SplunkHECClient:
             for start in range(0, len(events), batch_size):
                 batch = events[start : start + batch_size]
                 body = "".join(json.dumps(self._payload(event, run_id)) for event in batch)
-                response = client.post(self.endpoint, content=body)
+                try:
+                    response = client.post(self.endpoint, content=body)
+                except httpx.HTTPError as exc:
+                    raise self._connection_error("publish to", self.endpoint, exc) from exc
                 self._validate_response(response)
                 published += len(batch)
         return published
+
+    def _connection_error(
+        self, operation: str, runtime_endpoint: str, error: httpx.HTTPError
+    ) -> SplunkHECError:
+        configured = safe_endpoint(self.settings.splunk_hec_url or "")
+        runtime = safe_endpoint(runtime_endpoint)
+        route = f" (configured as {configured})" if configured != runtime else ""
+        detail = "; ".join(
+            exception_details(error, secrets=(self.settings.splunk_hec_token,))
+        )
+        return SplunkHECError(
+            f"Unable to {operation} Splunk HEC at {runtime}{route}: {detail}"
+        )
 
     def _payload(self, event: dict[str, Any], run_id: str) -> dict[str, Any]:
         event_time = datetime.fromisoformat(str(event["timestamp"]))

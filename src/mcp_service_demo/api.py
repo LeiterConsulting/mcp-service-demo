@@ -23,7 +23,7 @@ from .diagnostics import exception_details, safe_endpoint
 from .llm_client import openai_http_client
 from .mcp_client import MCPBroker, MCPRemoteTarget
 from .networking import external_runtime_url, is_bundled_mcp_url
-from .scenario import seed_splunk_scenario_via_mcp
+from .scenario import SplunkHECClient, seed_splunk_scenario_via_mcp
 from .splunk_backend import LiveSplunkBackend
 from .splunk_mcp_adapter import SplunkMCPAdapter
 from .storage import DemoStore
@@ -61,7 +61,7 @@ def _runtime_agent(on_event: Callable[[Any], Awaitable[None] | None] | None = No
 app = FastAPI(
     title="MCP Service Demo",
     description="Agent host and service-desk API for the Splunk MCP demonstration.",
-    version="0.9.6",
+    version="0.9.7",
 )
 
 static_dir = Path(__file__).parent / "static"
@@ -383,6 +383,7 @@ async def test_splunk_settings(update: SplunkConnectionUpdate) -> dict[str, Any]
                 "message": "Fixture telemetry is ready. No external Splunk connection is used.",
                 "details": {"mode": "fixture", "ready": True},
             }
+        hec_details = await asyncio.to_thread(SplunkHECClient(candidate).health)
         if candidate.splunk_rest_configured:
             details = await asyncio.to_thread(LiveSplunkBackend(candidate).status)
         else:
@@ -399,8 +400,8 @@ async def test_splunk_settings(update: SplunkConnectionUpdate) -> dict[str, Any]
             scenario_message = "Connection works; publish the demo scenario before presenting."
         return {
             "status": "success",
-            "message": f"Connected to Splunk. {scenario_message}",
-            "details": details,
+            "message": f"Connected to Splunk read path and HEC publisher. {scenario_message}",
+            "details": {**details, "hec": hec_details},
         }
     except Exception as exc:
         return {

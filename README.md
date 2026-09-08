@@ -149,8 +149,9 @@ Open [http://127.0.0.1:8100](http://127.0.0.1:8100), select **Setup → Splunk**
 5. Leave the companion-app contract at `mcp_service_demo`, `mcp_demo`, `mcp:demo:event`, and
    `checkout-degradation-v1` unless you deliberately changed the Splunk app.
 6. Select **Test MCP endpoint**. Success reports the discovered tool count.
-7. Select **Test live search**. Before the first publication, “Connection works; publish the demo
-   scenario” is a successful and expected result.
+7. Select **Test live paths**. This verifies both the Splunk read path and the HEC listener without
+   publishing events. Before the first publication, “Connection works; publish the demo scenario”
+   is a successful and expected result.
 8. Select **Save connection** before resetting the scenario.
 
 TLS verification should remain enabled for trusted remote certificates. For a private CA, place a
