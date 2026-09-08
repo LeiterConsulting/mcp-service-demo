@@ -10,6 +10,7 @@ from urllib.parse import quote
 import httpx
 
 from .config import Settings
+from .networking import external_runtime_url
 from .storage import DemoStore
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
@@ -111,7 +112,7 @@ class SplunkRestClient:
         elif self.settings.splunk_username and self.settings.splunk_password:
             auth = (self.settings.splunk_username, self.settings.splunk_password)
         return httpx.Client(
-            base_url=self.settings.splunk_rest_url,
+            base_url=external_runtime_url(self.settings.splunk_rest_url),
             headers=headers,
             auth=auth,
             verify=self.settings.splunk_rest_verify,

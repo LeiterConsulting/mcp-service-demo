@@ -13,6 +13,7 @@ from openai import AsyncOpenAI
 
 from .config import Settings
 from .mcp_client import MCPBroker, MCPTool
+from .networking import external_runtime_url
 from .splunk_mcp_adapter import SplunkCall, SplunkMCPAdapter
 
 WRITE_TOOLS = {"tickets__add_work_note", "tickets__update_ticket_status"}
@@ -631,7 +632,7 @@ class DemoAgent:
 
         async with AsyncOpenAI(
             api_key=self.settings.openai_api_key,
-            base_url=self.settings.openai_base_url,
+            base_url=external_runtime_url(self.settings.openai_base_url),
             timeout=self.settings.openai_timeout_seconds,
             max_retries=self.settings.openai_max_retries,
         ) as client:

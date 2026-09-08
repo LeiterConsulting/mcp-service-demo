@@ -104,11 +104,12 @@ docker compose up --build
 Then open [http://127.0.0.1:8100](http://127.0.0.1:8100). Scenario data and encrypted connection
 settings are kept in separate named volumes.
 
-Docker Compose honors the four port values in `.env`. It also makes
-`host.docker.internal` available on Docker Desktop and native Linux, so a Splunk or compatible LLM
-endpoint running on the host can be reached from the demo container. For a private CA, place the
-certificate in `certs/` and use a container path such as `/app/certs/customer-ca.pem` in Setup.
-Certificate files in that directory are ignored by Git.
+Docker Compose honors the four port values in `.env`. When an external Splunk, HEC, or compatible
+LLM endpoint is entered with `localhost`, `127.0.0.1`, or another loopback address, the container
+automatically reaches it through `host.docker.internal`; the saved URL stays unchanged and portable.
+The bundled MCP endpoint remains inside the demo container. For a private CA, place the certificate
+in `certs/` and use a container path such as `/app/certs/customer-ca.pem` in Setup. Certificate files
+in that directory are ignored by Git.
 
 ### Native developer alternative
 

@@ -3,11 +3,18 @@ from __future__ import annotations
 from dataclasses import replace
 from types import SimpleNamespace
 
+import pytest
+
 import mcp_service_demo.agent as agent_module
 import mcp_service_demo.mcp_client as mcp_client_module
 from mcp_service_demo.agent import DemoAgent, ToolEvent
 from mcp_service_demo.config import get_settings
-from mcp_service_demo.mcp_client import MCPBroker, MCPRemoteTarget, MCPTool
+from mcp_service_demo.mcp_client import (
+    MCPBroker,
+    MCPConnectionError,
+    MCPRemoteTarget,
+    MCPTool,
+)
 from mcp_service_demo.servers.catalog import catalog_mcp
 from mcp_service_demo.servers.splunk import splunk_mcp
 from mcp_service_demo.servers.tickets import ticket_mcp
@@ -513,13 +520,67 @@ async def test_remote_mcp_target_applies_bearer_token_and_tls_policy(monkeypatch
     assert captured["client"] == {"raise_exceptions": True}
 
 
+async def test_remote_mcp_target_routes_docker_localhost_and_unwraps_taskgroup(monkeypatch):
+    captured = {}
+
+    class FakeHttpClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+    class FailingClient:
+        def __init__(self, transport, **_kwargs):
+            captured["transport"] = transport
+
+        async def __aenter__(self):
+            raise ExceptionGroup(
+                "unhandled errors in a TaskGroup",
+                [ConnectionRefusedError("connection refused")],
+            )
+
+        async def __aexit__(self, *_args):
+            return None
+
+    def fake_transport(url, *, http_client):
+        captured["url"] = url
+        captured["http_client"] = http_client
+        return object()
+
+    monkeypatch.setenv("DEMO_CONTAINERIZED", "true")
+    monkeypatch.setattr(mcp_client_module.httpx2, "AsyncClient", FakeHttpClient)
+    monkeypatch.setattr(mcp_client_module, "Client", FailingClient)
+    monkeypatch.setattr(mcp_client_module, "streamable_http_client", fake_transport)
+    target = MCPRemoteTarget(
+        url="https://localhost:8089/services/mcp",
+        token="not-shown-in-error",
+        verify=False,
+    )
+
+    with pytest.raises(MCPConnectionError) as raised:
+        async with MCPBroker._client(target):
+            pass
+
+    message = str(raised.value)
+    assert captured["url"] == "https://host.docker.internal:8089/services/mcp"
+    assert "ConnectionRefusedError: connection refused" in message
+    assert "host.docker.internal" in message
+    assert "TaskGroup" not in message
+    assert "not-shown-in-error" not in message
+
+
 async def test_llm_mode_uses_saved_endpoint_model_and_responses_api(tmp_path, monkeypatch):
     monkeypatch.setenv("DEMO_DATABASE_PATH", str(tmp_path / "demo.db"))
+    monkeypatch.setenv("DEMO_CONTAINERIZED", "true")
     base = get_settings()
     settings = replace(
         base,
         agent_mode_preference="openai",
-        openai_base_url="https://llm.example/v1",
+        openai_base_url="http://localhost:11434/v1",
         openai_api_key="demo-key",
         openai_model="demo-model",
     )
@@ -552,7 +613,7 @@ async def test_llm_mode_uses_saved_endpoint_model_and_responses_api(tmp_path, mo
     assert result.message == "LLM response"
     assert captured["client"] == {
         "api_key": "demo-key",
-        "base_url": "https://llm.example/v1",
+        "base_url": "http://host.docker.internal:11434/v1",
         "timeout": 60.0,
         "max_retries": 1,
     }

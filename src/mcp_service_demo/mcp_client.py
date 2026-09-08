@@ -5,11 +5,14 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx2
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.server.mcpserver import MCPServer
+
+from .networking import external_runtime_url
 
 
 @dataclass(frozen=True)
@@ -32,6 +35,19 @@ class MCPRemoteTarget:
     url: str
     token: str | None = None
     verify: bool | str = True
+    container_internal: bool = False
+
+    @property
+    def runtime_url(self) -> str:
+        return self.url if self.container_internal else external_runtime_url(self.url)
+
+    @property
+    def routed_through_container_host(self) -> bool:
+        return self.runtime_url != self.url
+
+
+class MCPConnectionError(RuntimeError):
+    """Raised with the useful leaf error when a remote MCP transport cannot connect."""
 
 
 MCPClientTarget = str | MCPServer | MCPRemoteTarget
@@ -56,17 +72,25 @@ class MCPBroker:
                 yield client
             return
 
-        headers = {"Authorization": f"Bearer {target.token}"} if target.token else None
-        timeout = httpx2.Timeout(30.0, read=300.0)
-        async with httpx2.AsyncClient(
-            headers=headers,
-            verify=target.verify,
-            timeout=timeout,
-            follow_redirects=True,
-        ) as http_client:
-            transport = streamable_http_client(target.url, http_client=http_client)
-            async with Client(transport, raise_exceptions=True) as client:
-                yield client
+        runtime_url = target.runtime_url
+        try:
+            headers = {"Authorization": f"Bearer {target.token}"} if target.token else None
+            timeout = httpx2.Timeout(30.0, read=300.0)
+            async with httpx2.AsyncClient(
+                headers=headers,
+                verify=target.verify,
+                timeout=timeout,
+                follow_redirects=True,
+            ) as http_client:
+                transport = streamable_http_client(runtime_url, http_client=http_client)
+                async with Client(transport, raise_exceptions=True) as client:
+                    yield client
+        except MCPConnectionError:
+            raise
+        except ExceptionGroup as exc:
+            raise MCPConnectionError(_remote_error_message(target, runtime_url, exc)) from exc
+        except Exception as exc:
+            raise MCPConnectionError(_remote_error_message(target, runtime_url, exc)) from exc
 
     async def list_tools(self) -> list[MCPTool]:
         discovered: list[MCPTool] = []
@@ -111,3 +135,41 @@ class MCPBroker:
         if not separator:
             raise ValueError(f"Invalid namespaced tool name: {agent_name!r}")
         return await self.call(server, tool, arguments)
+
+
+def _remote_error_message(
+    target: MCPRemoteTarget, runtime_url: str, error: BaseException
+) -> str:
+    details = _exception_details(error, target.token)
+    detail = "; ".join(details) if details else error.__class__.__name__
+    message = f"Unable to connect to MCP endpoint {_safe_endpoint(runtime_url)}: {detail}"
+    if target.routed_through_container_host:
+        message += " (Docker routed the configured localhost address through host.docker.internal)"
+    return message
+
+
+def _exception_details(error: BaseException, token: str | None) -> list[str]:
+    if isinstance(error, BaseExceptionGroup):
+        details: list[str] = []
+        for nested in error.exceptions:
+            for detail in _exception_details(nested, token):
+                if detail not in details:
+                    details.append(detail)
+        return details
+
+    message = " ".join(str(error).split()).strip()
+    if token and token in message:
+        message = message.replace(token, "***")
+    label = error.__class__.__name__
+    return [f"{label}: {message}"[:600] if message else label]
+
+
+def _safe_endpoint(url: str) -> str:
+    try:
+        parsed = urlsplit(url)
+        hostname = parsed.hostname or "configured-host"
+        host = f"[{hostname}]" if ":" in hostname else hostname
+        netloc = f"{host}:{parsed.port}" if parsed.port is not None else host
+        return urlunsplit((parsed.scheme, netloc, parsed.path, "", ""))
+    except ValueError:
+        return "the configured URL"

@@ -12,6 +12,7 @@ import httpx
 
 from .config import Settings
 from .mcp_client import MCPBroker
+from .networking import external_runtime_url
 from .splunk_backend import LiveSplunkBackend, SplunkConnectionError, SplunkRestClient
 from .splunk_mcp_adapter import SplunkMCPAdapter
 from .storage import DemoStore
@@ -32,7 +33,7 @@ class SplunkHECClient:
 
     @property
     def endpoint(self) -> str:
-        base = (self.settings.splunk_hec_url or "").rstrip("/")
+        base = external_runtime_url(self.settings.splunk_hec_url or "").rstrip("/")
         if base.endswith("/services/collector/event"):
             return base
         if base.endswith("/services/collector"):

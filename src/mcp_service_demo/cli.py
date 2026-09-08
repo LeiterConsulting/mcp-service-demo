@@ -16,6 +16,7 @@ import uvicorn
 
 from .config import Settings, get_settings
 from .mcp_client import MCPBroker, MCPRemoteTarget
+from .networking import is_bundled_mcp_url
 from .scenario import seed_splunk_scenario, seed_splunk_scenario_via_mcp
 from .servers.catalog import run_catalog_server
 from .servers.splunk import run_splunk_server
@@ -140,6 +141,9 @@ def _remote_splunk_broker(settings: Settings) -> MCPBroker:
                 url=settings.splunk_mcp_url,
                 token=settings.splunk_mcp_token,
                 verify=settings.splunk_mcp_verify,
+                container_internal=is_bundled_mcp_url(
+                    settings.splunk_mcp_url, settings.splunk_mcp_port
+                ),
             )
         }
     )

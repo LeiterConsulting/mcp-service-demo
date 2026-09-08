@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import tarfile
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import httpx
@@ -48,6 +49,21 @@ def test_rest_client_uses_v2_export_and_bearer_auth(monkeypatch, tmp_path):
     assert requests[0].url.path == "/servicesNS/nobody/mcp_service_demo/search/v2/jobs/export"
     assert requests[0].headers["Authorization"] == "Bearer rest-secret"
     assert b"output_mode=json" in requests[0].content
+
+
+def test_rest_client_routes_docker_localhost_to_host(monkeypatch, tmp_path):
+    monkeypatch.setenv("DEMO_CONTAINERIZED", "true")
+    settings = live_settings(monkeypatch, tmp_path)
+    settings = replace(settings, splunk_rest_url="https://localhost:8089")
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"entry": [{"content": {"version": "10.0"}}]})
+
+    SplunkRestClient(settings, transport=httpx.MockTransport(handler)).server_info()
+
+    assert requests[0].url.host == "host.docker.internal"
 
 
 def test_live_health_queries_are_scoped_to_the_latest_demo_run(monkeypatch, tmp_path):
@@ -109,6 +125,8 @@ def test_live_health_queries_are_scoped_to_the_latest_demo_run(monkeypatch, tmp_
 
 def test_hec_payload_includes_scenario_and_run_metadata(monkeypatch, tmp_path):
     settings = live_settings(monkeypatch, tmp_path)
+    monkeypatch.setenv("DEMO_CONTAINERIZED", "true")
+    settings = replace(settings, splunk_hec_url="https://localhost:8088")
     captured: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -136,6 +154,7 @@ def test_hec_payload_includes_scenario_and_run_metadata(monkeypatch, tmp_path):
 
     body = json.loads(captured[0].content)
     assert published == 1
+    assert captured[0].url.host == "host.docker.internal"
     assert captured[0].url.path == "/services/collector/event"
     assert captured[0].headers["Authorization"] == "Splunk hec-secret"
     assert body["index"] == "mcp_demo"

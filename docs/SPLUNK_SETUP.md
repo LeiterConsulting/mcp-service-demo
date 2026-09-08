@@ -122,9 +122,12 @@ are preserved. Docker Compose keeps that encrypted profile in the separate `demo
 Open [http://127.0.0.1:8100](http://127.0.0.1:8100). The header will say **Splunk live**, and the
 briefing will identify a real Splunk endpoint as the telemetry source.
 
-When the demo itself runs in Docker and Splunk runs on the host, use a host-reachable name such as
-`host.docker.internal` in the Splunk URLs instead of `127.0.0.1`. The supplied Compose file maps
-that name on both Docker Desktop and native Linux.
+When the demo itself runs in Docker and Splunk is published on the host, URLs using `localhost`,
+`127.0.0.1`, `::1`, or `0.0.0.0` are automatically routed through `host.docker.internal`. This applies
+to external MCP, REST, HEC, and compatible LLM endpoints; it does not redirect the bundled Splunk MCP
+server running inside the demo container. The configured URL remains unchanged, so an exported profile
+stays portable between native and Docker installations. The supplied Compose file maps the host alias
+on Docker Desktop and native Linux.
 
 ## Move the connection profile
 

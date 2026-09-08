@@ -20,6 +20,7 @@ from .agent import DemoAgent
 from .config import Settings, get_environment_settings, get_settings
 from .connection_settings import SplunkConnectionStore
 from .mcp_client import MCPBroker, MCPRemoteTarget
+from .networking import external_runtime_url, is_bundled_mcp_url
 from .scenario import seed_splunk_scenario_via_mcp
 from .splunk_backend import LiveSplunkBackend
 from .splunk_mcp_adapter import SplunkMCPAdapter
@@ -36,6 +37,9 @@ def _splunk_mcp_target(runtime_settings: Settings | None = None) -> MCPRemoteTar
         url=resolved.splunk_mcp_url,
         token=resolved.splunk_mcp_token,
         verify=resolved.splunk_mcp_verify,
+        container_internal=is_bundled_mcp_url(
+            resolved.splunk_mcp_url, resolved.splunk_mcp_port
+        ),
     )
 
 
@@ -55,7 +59,7 @@ def _runtime_agent(on_event: Callable[[Any], Awaitable[None] | None] | None = No
 app = FastAPI(
     title="MCP Service Demo",
     description="Agent host and service-desk API for the Splunk MCP demonstration.",
-    version="0.9.0",
+    version="0.9.1",
 )
 
 static_dir = Path(__file__).parent / "static"
@@ -280,7 +284,7 @@ async def test_llm_settings(update: LLMConnectionUpdate) -> dict[str, Any]:
             raise ValueError("Enter an API key before testing the model connection")
         async with AsyncOpenAI(
             api_key=candidate.openai_api_key,
-            base_url=candidate.openai_base_url,
+            base_url=external_runtime_url(candidate.openai_base_url),
             timeout=20.0,
             max_retries=0,
         ) as client:
@@ -374,18 +378,26 @@ async def test_splunk_mcp_settings(update: SplunkConnectionUpdate) -> dict[str, 
     connection_store = SplunkConnectionStore.for_settings(base)
     try:
         candidate = connection_store.preview(base, update.model_dump(exclude_none=True))
-        tools = await MCPBroker({"splunk": _splunk_mcp_target(candidate)}).list_tools()
+        target = _splunk_mcp_target(candidate)
+        tools = await MCPBroker({"splunk": target}).list_tools()
         tls_policy = (
             "verify certificates" if candidate.splunk_mcp_verify is not False else "do not verify"
+        )
+        route_message = (
+            " Docker routed localhost through host.docker.internal."
+            if target.routed_through_container_host
+            else ""
         )
         return {
             "status": "success",
             "message": (
                 f"Connected to the MCP endpoint. {len(tools)} tools are available. "
-                f"TLS policy: {tls_policy}."
+                f"TLS policy: {tls_policy}.{route_message}"
             ),
             "details": {
                 "endpoint": candidate.splunk_mcp_url,
+                "runtime_endpoint": target.runtime_url,
+                "container_host_routed": target.routed_through_container_host,
                 "tls_verification": candidate.splunk_mcp_verify is not False,
                 "ca_bundle": (
                     candidate.splunk_mcp_verify
