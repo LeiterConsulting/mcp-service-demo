@@ -22,7 +22,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$Version = "0.9.5"
+$Version = "0.9.6"
 $AppName = "MCP Service Demo"
 $InstallDir = $PSScriptRoot
 $EnvFile = Join-Path $InstallDir ".env"

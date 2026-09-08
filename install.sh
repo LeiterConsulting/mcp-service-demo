@@ -3,7 +3,7 @@
 
 set -Eeuo pipefail
 
-VERSION="0.9.5"
+VERSION="0.9.6"
 APP_NAME="MCP Service Demo"
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$INSTALL_DIR/.env"

@@ -510,6 +510,23 @@ function renderConnectionStatus() {
   $("#data-source-label").innerHTML = live
     ? "<span></span> Live protocol · Real Splunk endpoint"
     : "<span></span> Live protocol · Fixture telemetry";
+  renderResetSourceMode();
+}
+
+function renderResetSourceMode() {
+  const live = state.health?.splunk_data_mode === "live";
+  const badge = $("#reset-source-mode");
+  if (!badge) return;
+  badge.classList.toggle("live", live);
+  badge.classList.toggle("fixture", !live);
+  badge.textContent = live ? "Live Splunk + HEC" : "Local fixture · no HEC";
+  $("#reset-control-title").textContent = live
+    ? "Republish the incident scenario"
+    : "Restore the local fixture";
+  $("#reset-control-description").textContent = live
+    ? "Publish a fresh deterministic run through HEC, verify every event through MCP, and restore the service-desk record."
+    : "Restore the bundled ticket and telemetry fixture. This mode does not publish events to Splunk.";
+  $("#reset-button").textContent = live ? "Republish demo" : "Reset local fixture";
 }
 
 function renderAgentMode() {
@@ -1488,7 +1505,7 @@ async function resetDemo() {
 function setResetStep(name, status, label) {
   const step = $(`[data-reset-step="${name}"]`);
   if (!step) return;
-  step.classList.remove("active", "complete", "failed");
+  step.classList.remove("active", "complete", "failed", "skipped");
   if (status) step.classList.add(status);
   step.querySelector("i").textContent = label;
 }
@@ -1503,13 +1520,16 @@ function startResetProgress() {
   const hero = $("#reset-progress-hero");
   hero.className = "reset-progress-hero running";
   $("#reset-progress-kicker").textContent = "Reset in progress";
-  $("#reset-progress-title").textContent = "Preparing a clean, searchable scenario";
-  $("#reset-progress-message").textContent = state.health?.splunk_data_mode === "live"
+  const live = state.health?.splunk_data_mode === "live";
+  $("#reset-progress-title").textContent = live
+    ? "Preparing a clean, searchable Splunk scenario"
+    : "Restoring the local fixture";
+  $("#reset-progress-message").textContent = live
     ? "Restoring the ticket, publishing through HEC, and waiting for the complete run to become searchable through MCP. Splunk indexing can take up to 90 seconds."
-    : "Restoring the bundled ticket and telemetry fixture to its starting point.";
+    : "Restoring only the bundled ticket and local telemetry fixture. No events will be sent to Splunk in fixture mode.";
   setResetStep("ticket", "active", "Working");
-  setResetStep("publish", "", "Queued");
-  setResetStep("verify", "", "Queued");
+  setResetStep("publish", live ? "" : "skipped", live ? "Queued" : "Not used");
+  setResetStep("verify", live ? "" : "skipped", live ? "Queued" : "Not used");
   setResetStep("preserve", "", "Queued");
   $("#reset-result-grid").hidden = true;
   $("#reset-result-grid").innerHTML = "";
@@ -1522,19 +1542,24 @@ function startResetProgress() {
 }
 
 function completeResetProgress(result) {
-  ["ticket", "publish", "verify", "preserve"].forEach((name) => setResetStep(name, "complete", "Complete"));
-  const live = state.health?.splunk_data_mode === "live";
+  const live = result.data_mode === "live";
+  setResetStep("ticket", "complete", "Complete");
+  setResetStep("publish", live ? "complete" : "skipped", live ? "Complete" : "Not used");
+  setResetStep("verify", live ? "complete" : "skipped", live ? "Complete" : "Not used");
+  setResetStep("preserve", "complete", "Complete");
   const hero = $("#reset-progress-hero");
-  hero.className = "reset-progress-hero complete";
-  $("#reset-progress-kicker").textContent = "Scenario ready";
-  $("#reset-progress-title").textContent = "INC-1042 is ready for the next run";
+  hero.className = `reset-progress-hero ${live ? "complete" : "fixture"}`;
+  $("#reset-progress-kicker").textContent = live ? "Scenario verified" : "Local fixture ready";
+  $("#reset-progress-title").textContent = live
+    ? "INC-1042 is ready for the next run"
+    : "INC-1042 restored locally — Splunk unchanged";
   $("#reset-progress-message").textContent = live
     ? "Fresh Splunk evidence is searchable through MCP and the service-desk record is back at its starting state."
-    : "The deterministic fixture and service-desk record are back at their starting state.";
+    : "The deterministic fixture and service-desk record were restored. Switch the Splunk source to Live Splunk before resetting if you expect HEC events.";
   const summary = [
     ["Ticket", result.ticket || "INC-1042", "Starting state restored"],
-    ["HEC publication", live ? `${Number(result.events_published || 0).toLocaleString()} accepted` : "Fixture restored", live ? `Target index: ${result.index || "Splunk"}` : "Ready locally"],
-    ["MCP verification", live ? `${Number(result.indexed_events || state.splunkStatus?.event_count || 0).toLocaleString()} searchable` : "Ready", live ? (result.verification_identity || "Configured MCP identity") : "Deterministic dataset"],
+    ["HEC publication", live ? `${Number(result.events_published || 0).toLocaleString()} accepted` : "Not attempted", live ? `Target index: ${result.index || "Splunk"}` : "Fixture mode does not call HEC"],
+    ["MCP verification", live ? `${Number(result.indexed_events || state.splunkStatus?.event_count || 0).toLocaleString()} searchable` : "Not attempted", live ? (result.verification_identity || "Configured MCP identity") : "No Splunk run was published"],
     ["Configuration", result.settings_preserved ? "Preserved" : "Unchanged", `${audienceProfile().label} audience · connections retained`],
   ];
   $("#reset-result-grid").innerHTML = summary.map(([label, value, detail]) => `<article><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b><small>${escapeHtml(detail)}</small></article>`).join("");
@@ -1559,6 +1584,15 @@ function completeResetProgress(result) {
       <code>${escapeHtml(query)}</code>
       ${runUrl ? `<a class="button secondary" href="${escapeHtml(runUrl)}" target="_blank" rel="noopener">Open this exact run in Splunk <span>↗</span></a>` : ""}`;
     $("#reset-verification-detail").hidden = false;
+  } else {
+    $("#reset-verification-detail").innerHTML = `
+      <div><span>Splunk publication skipped</span><p>The current evidence source is <b>Fixture telemetry</b>. MCP connectivity tests can pass in this mode, but reset does not call HEC and does not add events to Splunk.</p></div>
+      <button class="button secondary" type="button" id="reset-open-splunk-settings">Switch to Live Splunk</button>`;
+    $("#reset-verification-detail").hidden = false;
+    $("#reset-open-splunk-settings").addEventListener("click", () => {
+      $("#reset-dialog").close();
+      openSetup("splunk");
+    });
   }
   $("#reset-done-button").disabled = false;
 }

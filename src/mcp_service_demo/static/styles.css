@@ -602,6 +602,10 @@ body[data-audience="security"] .tool-access { box-shadow: inset 0 0 0 1px color-
 .settings-footer > div { display: flex; gap: 8px; }
 .settings-footer .button { min-height: 38px; font-size: 10px; }
 .demo-control-panel .settings-body { display: grid; gap: 14px; }
+.demo-control-labels { display: flex; align-items: center; gap: 9px; }
+.demo-source-badge { padding: 4px 7px; border-radius: 999px; font-size: 7px; font-weight: 850; letter-spacing: 0.06em; text-transform: uppercase; }
+.demo-source-badge.live { color: #0a6a49; background: #dff5e9; }
+.demo-source-badge.fixture { color: #775a11; background: #f9e9bd; }
 .audience-section h3 { margin: 4px 0 0; font-family: Georgia, serif; font-size: 21px; font-weight: 500; }
 .audience-section .settings-help { min-height: 0; margin-bottom: 13px; }
 .audience-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; }
@@ -678,6 +682,9 @@ body[data-audience="security"] .tool-access { box-shadow: inset 0 0 0 1px color-
 .reset-progress-hero.running .reset-progress-icon { animation: reset-spin 1.2s linear infinite; }
 .reset-progress-hero.complete .reset-progress-icon { font-size: 0; background: #21aa76; }
 .reset-progress-hero.complete .reset-progress-icon::after { content: "✓"; font-size: 20px; }
+.reset-progress-hero.fixture { border-color: #ead9ad; background: #fffaf0; }
+.reset-progress-hero.fixture .reset-progress-icon { background: #c18b1d; animation: none; font-size: 0; }
+.reset-progress-hero.fixture .reset-progress-icon::after { content: "i"; font-size: 18px; font-family: Georgia, serif; }
 .reset-progress-hero.failed { border-color: #e5b9b2; background: #fff8f7; }
 .reset-progress-hero.failed .reset-progress-icon { background: var(--red); animation: none; }
 .reset-progress-hero.failed .reset-progress-icon { font-size: 0; }
@@ -699,6 +706,9 @@ body[data-audience="security"] .tool-access { box-shadow: inset 0 0 0 1px color-
 .reset-steps li.complete i { color: var(--green); }
 .reset-steps li.failed > span { color: white; background: var(--red); }
 .reset-steps li.failed i { color: var(--red); }
+.reset-steps li.skipped { background: #faf9f5; }
+.reset-steps li.skipped > span { color: #9a8251; background: #f2ead8; }
+.reset-steps li.skipped i { color: #92752f; }
 .reset-result-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
 .reset-result-grid article { padding: 13px 14px; border: 1px solid var(--line); border-radius: 11px; background: white; }
 .reset-result-grid span, .reset-result-grid b, .reset-result-grid small { display: block; }

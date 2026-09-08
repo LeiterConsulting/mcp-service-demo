@@ -189,6 +189,9 @@ the presentation state visible.
 
 Common first-run failures usually identify one boundary:
 
+- **Reset finishes immediately and Splunk stays empty:** the saved source is still **Fixture
+  telemetry**. A successful MCP endpoint test does not switch the evidence source. Choose **Live
+  Splunk** under **Setup → Splunk**, then select **Save connection** before resetting.
 - **MCP cannot connect:** confirm port `8089` is published and the MCP URL is reachable from Docker.
 - **MCP returns unauthorized:** use the MCP bearer token, not the HEC token.
 - **HEC rejects the batch:** confirm HEC is enabled and its token can write to `mcp_demo`.

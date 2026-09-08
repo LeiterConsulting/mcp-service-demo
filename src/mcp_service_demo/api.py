@@ -61,7 +61,7 @@ def _runtime_agent(on_event: Callable[[Any], Awaitable[None] | None] | None = No
 app = FastAPI(
     title="MCP Service Demo",
     description="Agent host and service-desk API for the Splunk MCP demonstration.",
-    version="0.9.5",
+    version="0.9.6",
 )
 
 static_dir = Path(__file__).parent / "static"
@@ -678,6 +678,7 @@ async def reset_demo() -> dict[str, Any]:
             result = store.reset()
         return {
             **result,
+            "data_mode": runtime_settings.splunk_data_mode,
             "settings_preserved": True,
             "splunk_settings_preserved": True,
         }
