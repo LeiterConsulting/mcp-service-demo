@@ -11,3 +11,4 @@ data/*.key
 data/*.tmp
 data/.splunk-connection.key
 tests
+certs

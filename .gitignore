@@ -13,3 +13,5 @@ data/*.enc
 data/*.key
 data/*.tmp
 data/.splunk-connection.key
+certs/*
+!certs/.gitkeep

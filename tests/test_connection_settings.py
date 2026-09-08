@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import os
 import stat
+from pathlib import Path
 
 import pytest
 
@@ -229,3 +231,105 @@ def test_blank_llm_api_key_preserves_existing_value(monkeypatch, tmp_path):
     assert effective.openai_api_key == "first-key"
     assert effective.openai_model == "next-model"
     assert effective.agent_mode == "guided"
+
+
+def test_portable_profile_round_trip_includes_secrets_tuning_and_ca(monkeypatch, tmp_path):
+    base = base_settings(monkeypatch, tmp_path)
+    source_store = SplunkConnectionStore.for_settings(base)
+    ca_path = tmp_path / "customer-ca.pem"
+    ca_path.write_text(
+        "-----BEGIN CERTIFICATE-----\nportable-demo-ca\n-----END CERTIFICATE-----\n",
+        encoding="utf-8",
+    )
+    source_store.save(
+        base,
+        {
+            "demo_audience": "security",
+            "data_mode": "live",
+            "mcp_url": "https://portable-mcp.example/mcp",
+            "mcp_token": "portable-mcp-secret",
+            "mcp_verify_ssl": True,
+            "mcp_ca_bundle_path": str(ca_path),
+            "rest_url": "https://portable-splunk.example:8089",
+            "rest_token": "portable-rest-secret",
+            "rest_token_scheme": "Bearer",
+            "hec_url": "https://portable-splunk.example:8088",
+            "hec_token": "portable-hec-secret",
+            "agent_mode": "openai",
+            "openai_base_url": "https://llm.example/v1",
+            "openai_api_key": "portable-llm-secret",
+            "openai_model": "portable-model",
+            "openai_max_tool_calls": 19,
+            "openai_max_parallel_tools": 2,
+            "splunk_app": "portable_app",
+            "splunk_index": "portable_index",
+        },
+    )
+
+    bundle = source_store.export_portable(base, "correct horse battery")
+    serialized = json.dumps(bundle)
+
+    assert bundle["format"] == "mcp-service-demo.settings"
+    assert "portable-mcp-secret" not in serialized
+    assert "portable-llm-secret" not in serialized
+    assert "portable-mcp.example" not in serialized
+    with pytest.raises(ValueError, match="passphrase"):
+        source_store.preview_portable(base, bundle, "incorrect password")
+
+    preview = source_store.preview_portable(base, bundle, "correct horse battery")
+    assert preview["splunk"]["data_mode"] == "live"
+    assert preview["splunk"]["mcp_host"] == "portable-mcp.example"
+    assert preview["llm"]["model"] == "portable-model"
+    assert preview["audience"] == "security"
+    assert preview["credential_count"] == 4
+    assert preview["custom_ca_bundles"] == 1
+
+    destination_store = SplunkConnectionStore(
+        tmp_path / "destination" / "profile.enc",
+        tmp_path / "destination" / ".profile.key",
+    )
+    destination_store.save(base, {"mcp_token": "old-secret", "demo_audience": "finance"})
+    imported = destination_store.import_portable(base, bundle, "correct horse battery")
+    effective = destination_store.apply(base)
+
+    assert imported == preview
+    assert effective.splunk_mcp_url == "https://portable-mcp.example/mcp"
+    assert effective.splunk_mcp_token == "portable-mcp-secret"
+    assert effective.splunk_rest_token == "portable-rest-secret"
+    assert effective.splunk_hec_token == "portable-hec-secret"
+    assert effective.openai_api_key == "portable-llm-secret"
+    assert effective.openai_model == "portable-model"
+    assert effective.openai_max_tool_calls == 19
+    assert effective.openai_max_parallel_tools == 2
+    assert effective.splunk_app == "portable_app"
+    assert effective.splunk_index == "portable_index"
+    assert destination_store.safe_export_demo()["audience"] == "security"
+    assert isinstance(effective.splunk_mcp_verify, str)
+    imported_ca = Path(effective.splunk_mcp_verify)
+    assert imported_ca.parent == destination_store.config_path.parent / "certificates"
+    assert imported_ca.read_text(encoding="utf-8") == ca_path.read_text(encoding="utf-8")
+    assert b"portable-llm-secret" not in destination_store.config_path.read_bytes()
+
+
+def test_portable_profile_rejects_tampering_and_missing_ca(monkeypatch, tmp_path):
+    base = base_settings(monkeypatch, tmp_path)
+    connection_store = SplunkConnectionStore.for_settings(base)
+    connection_store.save(base, {"openai_api_key": "protected-secret"})
+    bundle = connection_store.export_portable(base, "correct horse battery")
+    tampered = json.loads(json.dumps(bundle))
+    tampered["payload"] = tampered["payload"][:-1] + (
+        "A" if tampered["payload"][-1] != "A" else "B"
+    )
+
+    with pytest.raises(ValueError, match="package or passphrase"):
+        connection_store.import_portable(base, tampered, "correct horse battery")
+
+    connection_store.save(
+        base,
+        {
+            "mcp_verify_ssl": True,
+            "mcp_ca_bundle_path": str(tmp_path / "missing-ca.pem"),
+        },
+    )
+    with pytest.raises(ValueError, match="could not be included"):
+        connection_store.export_portable(base, "correct horse battery")

@@ -21,17 +21,46 @@ Fixture mode remains available when a Splunk instance is not nearby.
 
 ## Quick start
 
-Requires Python 3.11 or newer.
+The supported demo installation uses Docker Desktop or Docker Engine with Docker Compose. Clone the
+repository, then run the installer from its root.
+
+### macOS or Linux
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e '.[dev]'
-cp .env.example .env
-mcp-service-demo run
+git clone https://github.com/LeiterConsulting/mcp-service-demo.git
+cd mcp-service-demo
+chmod +x install.sh
+./install.sh
 ```
 
-Open [http://127.0.0.1:8100](http://127.0.0.1:8100).
+### Windows PowerShell
+
+```powershell
+git clone https://github.com/LeiterConsulting/mcp-service-demo.git
+Set-Location mcp-service-demo
+.\install.ps1
+```
+
+The installer creates `.env` from the safe example when needed, builds the image, starts all three
+MCP servers and the agent host, waits for a healthy application, and prints the web address. Open
+[http://127.0.0.1:8100](http://127.0.0.1:8100) unless you selected another port.
+
+Common lifecycle and installation options are matched across both scripts:
+
+| Purpose | macOS/Linux | Windows PowerShell |
+| --- | --- | --- |
+| Start | `./install.sh --start` | `.\install.ps1 -Start` |
+| Stop, preserving settings | `./install.sh --stop` | `.\install.ps1 -Stop` |
+| Rebuild and restart | `./install.sh --restart --build` | `.\install.ps1 -Restart -Build` |
+| Show status | `./install.sh --status` | `.\install.ps1 -Status` |
+| Follow logs | `./install.sh --logs` | `.\install.ps1 -Logs` |
+| Use another web port | `./install.sh --web-port 8200` | `.\install.ps1 -WebPort 8200` |
+| Show all options | `./install.sh --help` | `.\install.ps1 -Help` |
+
+Port overrides and an optional Compose project name are saved in `.env`, so later lifecycle commands
+use the same installation. `--uninstall`/`-Uninstall` removes containers and the locally built image
+but deliberately preserves encrypted settings and ticket data. Add `--remove-data`/`-RemoveData` only
+when those volumes should also be permanently removed.
 
 An LLM is optional. Open **Setup → Agent & LLM** to switch between the deterministic Guided agent and an
 LLM-assisted agent that selects and sequences focused incident operations backed by the discovered
@@ -66,7 +95,7 @@ operations stay unchanged, making it possible to tailor the conversation without
 different or less truthful demo. Audience selection is saved with connection settings and survives
 **Reset demo**.
 
-### Docker alternative
+### Manual Docker alternative
 
 ```bash
 docker compose up --build
@@ -74,6 +103,41 @@ docker compose up --build
 
 Then open [http://127.0.0.1:8100](http://127.0.0.1:8100). Scenario data and encrypted connection
 settings are kept in separate named volumes.
+
+Docker Compose honors the four port values in `.env`. It also makes
+`host.docker.internal` available on Docker Desktop and native Linux, so a Splunk or compatible LLM
+endpoint running on the host can be reached from the demo container. For a private CA, place the
+certificate in `certs/` and use a container path such as `/app/certs/customer-ca.pem` in Setup.
+Certificate files in that directory are ignored by Git.
+
+### Native developer alternative
+
+Python 3.11 or newer is required for a native run:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e '.[dev]'
+cp .env.example .env
+mcp-service-demo run
+```
+
+The Docker installer is recommended for a presentation machine because it starts and health-checks
+the entire service set with one command. The native path is useful for development and testing.
+
+## Move a configured demo to another machine
+
+Open **Setup → Demo controls → Move this demo profile** to create a portable `.mcpdemo` package.
+The export contains the effective Splunk MCP, REST, HEC, TLS, companion-app contract, LLM, tuning,
+and audience settings—including credentials. Configured CA bundles are embedded so they do not
+depend on a source-machine path. Ticket records and synthetic scenario data are deliberately not
+included.
+
+The package is encrypted with a passphrase of at least 12 characters. The passphrase is neither
+stored in the package nor recoverable, so transfer it separately. On the target machine, choose the
+package, enter the passphrase, review the non-secret summary, and confirm the import. The current
+connection profile is replaced and becomes active without a restart. Treat the package as a
+sensitive credential backup even though its contents are encrypted.
 
 ## Demo services
 

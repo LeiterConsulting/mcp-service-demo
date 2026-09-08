@@ -100,6 +100,9 @@ paths. The CLI uses that same effective profile.
 
 TLS verification is enabled. A CA file can be supplied with `SPLUNK_REST_CA_BUNDLE` and
 `SPLUNK_HEC_CA_BUNDLE`. Disabling verification is provided only for a self-signed local lab.
+For Docker, place private CA files in the repository's ignored `certs/` directory (or set
+`DEMO_CERTS_PATH` to another directory) and configure the in-container path, for example
+`/app/certs/customer-ca.pem`. The same mount supports `SPLUNK_MCP_CA_BUNDLE`.
 
 ## 4. Verify, seed, and run
 
@@ -120,7 +123,22 @@ Open [http://127.0.0.1:8100](http://127.0.0.1:8100). The header will say **Splun
 briefing will identify a real Splunk endpoint as the telemetry source.
 
 When the demo itself runs in Docker and Splunk runs on the host, use a host-reachable name such as
-`host.docker.internal` in the Splunk URLs instead of `127.0.0.1`.
+`host.docker.internal` in the Splunk URLs instead of `127.0.0.1`. The supplied Compose file maps
+that name on both Docker Desktop and native Linux.
+
+## Move the connection profile
+
+After validating Splunk and the LLM, open **Setup → Demo controls → Move this demo profile** and
+download an encrypted `.mcpdemo` package. It includes the effective MCP, REST, HEC, TLS, companion
+app, LLM, tuning, and audience settings. Any configured CA bundle is embedded and installed into
+the target's persistent settings volume during import. Scenario events and service-desk tickets are
+not part of the package.
+
+Use a unique passphrase of at least 12 characters and send it separately from the package. On the
+target demo host, start the application, choose the package and passphrase, review the non-secret
+summary, and confirm replacement of the existing connection profile. Imported settings take effect
+without restarting. A wrong passphrase, modified package, unsupported schema, or missing source CA
+file is rejected before the active profile is changed.
 
 ## Troubleshooting
 

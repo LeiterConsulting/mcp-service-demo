@@ -20,6 +20,7 @@ const state = {
   ],
   timeline: [],
   investigation: null,
+  pendingProfileImport: null,
   busy: false,
 };
 
@@ -680,10 +681,148 @@ function renderDemoSettings(settings) {
   renderAudience(settings?.audience || "executive");
 }
 
+function showProfileTransferResult(message, isError = false) {
+  const result = $("#profile-transfer-result");
+  result.hidden = false;
+  result.classList.toggle("error", isError);
+  result.textContent = message;
+}
+
+function profilePassphrase(value) {
+  const passphrase = value || "";
+  if (passphrase.length < 12) throw new Error("Use a passphrase of at least 12 characters");
+  return passphrase;
+}
+
+async function exportProfile() {
+  const button = $("#export-profile-button");
+  const passphrase = profilePassphrase($("#profile-export-passphrase").value);
+  if (passphrase !== $("#profile-export-confirm").value) {
+    throw new Error("The export passphrases do not match");
+  }
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Encrypting…";
+  $("#profile-transfer-result").hidden = true;
+  try {
+    const result = await api("/api/settings/portable/export", {
+      method: "POST",
+      body: JSON.stringify({ passphrase }),
+    });
+    const blob = new Blob([JSON.stringify(result.bundle, null, 2)], {
+      type: "application/vnd.mcp-service-demo.settings+json",
+    });
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = result.filename || "mcp-service-demo-profile.mcpdemo";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+    $("#profile-export-passphrase").value = "";
+    $("#profile-export-confirm").value = "";
+    showProfileTransferResult(`Encrypted profile downloaded as ${link.download}. Keep the passphrase separate.`);
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+function renderProfileImportSummary(summary) {
+  const splunk = summary.splunk || {};
+  const llm = summary.llm || {};
+  const credentials = summary.credential_labels || [];
+  $("#import-profile-summary").innerHTML = `
+    <article class="import-summary-card"><span>Splunk evidence</span><b>${escapeHtml((splunk.data_mode || "fixture") === "live" ? "Live Splunk" : "Fixture telemetry")}</b><small>MCP ${escapeHtml(splunk.mcp_host || "not configured")} · HEC ${escapeHtml(splunk.hec_host || "not configured")}</small></article>
+    <article class="import-summary-card"><span>Agent &amp; LLM</span><b>${escapeHtml((llm.agent_mode || "guided") === "openai" ? llm.model || "LLM-assisted" : "Guided agent")}</b><small>${escapeHtml(llm.host || "not configured")} · tuned limits included</small></article>
+    <article class="import-summary-card"><span>Presentation</span><b>${escapeHtml((summary.audience || "executive").replace(/^./, (letter) => letter.toUpperCase()))} audience</b><small>Exported by v${escapeHtml(summary.source_app_version || "unknown")} · ${escapeHtml(summary.exported_at || "unknown")}</small></article>
+    <article class="import-summary-card"><span>Protected contents</span><b>${Number(summary.credential_count || 0)} credential set${Number(summary.credential_count || 0) === 1 ? "" : "s"}</b><small>${credentials.length ? escapeHtml(credentials.join(" · ")) : "No credentials"} · ${Number(summary.custom_ca_bundles || 0)} embedded CA bundle${Number(summary.custom_ca_bundles || 0) === 1 ? "" : "s"}</small></article>`;
+}
+
+async function previewProfileImport() {
+  const button = $("#preview-profile-button");
+  const file = $("#profile-import-file").files?.[0];
+  if (!file) throw new Error("Choose an .mcpdemo profile package first");
+  if (file.size > 2_000_000) throw new Error("The selected profile package is too large");
+  const passphrase = profilePassphrase($("#profile-import-passphrase").value);
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Decrypting…";
+  $("#profile-transfer-result").hidden = true;
+  try {
+    let bundle;
+    try {
+      bundle = JSON.parse(await file.text());
+    } catch {
+      throw new Error("The selected file is not a valid MCP demo profile");
+    }
+    const result = await api("/api/settings/portable/preview", {
+      method: "POST",
+      body: JSON.stringify({ passphrase, bundle }),
+    });
+    state.pendingProfileImport = { passphrase, bundle };
+    renderProfileImportSummary(result.summary);
+    $("#import-profile-dialog").showModal();
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+function cancelProfileImport() {
+  state.pendingProfileImport = null;
+  $("#import-profile-dialog").close();
+}
+
+async function confirmProfileImport() {
+  if (!state.pendingProfileImport) return;
+  const button = $("#confirm-profile-import");
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Importing…";
+  try {
+    const result = await api("/api/settings/portable/import", {
+      method: "POST",
+      body: JSON.stringify(state.pendingProfileImport),
+    });
+    renderSplunkSettings(result.settings.splunk);
+    renderLLMSettings(result.settings.llm);
+    renderDemoSettings(result.settings.demo);
+    state.health = await api("/api/health");
+    state.splunkStatus = await api("/api/splunk/status").catch((error) => ({
+      ready: false,
+      error: error.message,
+    }));
+    const toolPayload = await api("/api/mcp/tools").catch(() => null);
+    if (toolPayload) {
+      state.connections = toolPayload.servers;
+      state.tools = toolPayload.tools;
+    }
+    renderConnectionStatus();
+    renderAgentMode();
+    renderToolCatalog();
+    state.pendingProfileImport = null;
+    $("#profile-import-file").value = "";
+    $("#profile-import-passphrase").value = "";
+    $("#import-profile-dialog").close();
+    $("#setup-dialog").close();
+    toast(`Demo profile imported · ${audienceProfile().label} audience · settings active`);
+  } catch (error) {
+    state.pendingProfileImport = null;
+    $("#import-profile-dialog").close();
+    showProfileTransferResult(`Profile could not be imported: ${error.message}`, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
 async function openSetup(tab = "splunk") {
   const dialog = $("#setup-dialog");
   $("#connection-result").hidden = true;
   $("#llm-connection-result").hidden = true;
+  $("#profile-transfer-result").hidden = true;
   switchSetupTab(tab);
   if (!dialog.open) dialog.showModal();
   try {
@@ -1327,6 +1466,21 @@ function bindEvents() {
   $("#test-llm-button").addEventListener("click", testLLMConnection);
   $("#llm-settings-form").addEventListener("submit", saveLLMConnection);
   $("#reset-button").addEventListener("click", resetDemo);
+  $("#export-profile-button").addEventListener("click", () =>
+    exportProfile().catch((error) => showProfileTransferResult(error.message, true)),
+  );
+  $("#preview-profile-button").addEventListener("click", () =>
+    previewProfileImport().catch((error) => showProfileTransferResult(error.message, true)),
+  );
+  $("#cancel-profile-import").addEventListener("click", cancelProfileImport);
+  $("#cancel-profile-import-x").addEventListener("click", cancelProfileImport);
+  $("#confirm-profile-import").addEventListener("click", confirmProfileImport);
+  $("#import-profile-dialog").addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) cancelProfileImport();
+  });
+  $("#import-profile-dialog").addEventListener("close", () => {
+    state.pendingProfileImport = null;
+  });
   $$('input[name="demo-audience"]').forEach((input) =>
     input.addEventListener("change", () => saveAudience(input.value)),
   );

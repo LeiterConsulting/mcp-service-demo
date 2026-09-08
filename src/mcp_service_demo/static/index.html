@@ -8,7 +8,7 @@
       content="A live demonstration of an agent using MCP to investigate Splunk telemetry and enrich a service ticket."
     />
     <title>MCP Service Demo</title>
-    <link rel="stylesheet" href="/static/styles.css?v=0.8.0" />
+    <link rel="stylesheet" href="/static/styles.css?v=0.9.0" />
   </head>
   <body>
     <div class="app-shell">
@@ -558,6 +558,46 @@
                   <div class="preserved-list"><span>✓ Splunk MCP and TLS</span><span>✓ HEC publisher</span><span>✓ LLM endpoint and key</span><span>✓ Agent tuning</span><span>✓ Audience lens</span></div>
                 </section>
               </div>
+
+              <section class="settings-section profile-transfer-section">
+                <div class="settings-section-heading">
+                  <div>
+                    <span class="settings-step">Environment handoff</span>
+                    <h3>Move this demo profile</h3>
+                  </div>
+                  <span class="settings-role write">Encrypted package</span>
+                </div>
+                <p class="settings-help">
+                  Carry the complete Splunk connection, embedded CA certificates, LLM configuration and tuning, and audience lens to another demo machine. Tickets and scenario data are not included.
+                </p>
+                <div class="profile-security-note">
+                  <span aria-hidden="true">◈</span>
+                  <p><b>This package contains credentials.</b> Secrets are protected by your passphrase, which is never stored in the package. Share the file and passphrase separately.</p>
+                </div>
+                <div class="profile-transfer-grid">
+                  <article class="profile-transfer-card">
+                    <span class="settings-step">Export</span>
+                    <h4>Create a portable profile</h4>
+                    <p>Use a unique passphrase of at least 12 characters. Custom CA files are embedded when configured.</p>
+                    <label class="field-label" for="profile-export-passphrase">Package passphrase</label>
+                    <input class="settings-input" id="profile-export-passphrase" type="password" autocomplete="new-password" minlength="12" maxlength="256" placeholder="12 characters or more" />
+                    <label class="field-label" for="profile-export-confirm">Confirm passphrase</label>
+                    <input class="settings-input" id="profile-export-confirm" type="password" autocomplete="new-password" minlength="12" maxlength="256" placeholder="Repeat the passphrase" />
+                    <button class="button secondary profile-action" type="button" id="export-profile-button">Download encrypted profile</button>
+                  </article>
+                  <article class="profile-transfer-card">
+                    <span class="settings-step">Import</span>
+                    <h4>Load a demo profile</h4>
+                    <p>Choose an <code>.mcpdemo</code> package and preview its non-secret details before replacing this machine's settings.</p>
+                    <label class="field-label" for="profile-import-file">Profile package</label>
+                    <input class="settings-input file-input" id="profile-import-file" type="file" accept=".mcpdemo,application/json" />
+                    <label class="field-label" for="profile-import-passphrase">Package passphrase</label>
+                    <input class="settings-input" id="profile-import-passphrase" type="password" autocomplete="new-password" minlength="12" maxlength="256" placeholder="Enter the package passphrase" />
+                    <button class="button secondary profile-action" type="button" id="preview-profile-button">Review import</button>
+                  </article>
+                </div>
+                <div class="connection-result" id="profile-transfer-result" role="status" aria-live="polite" hidden></div>
+              </section>
             </div>
             <footer class="settings-footer">
               <p>Reset affects synthetic scenario data only. Saved connections and the selected audience remain preserved.</p>
@@ -586,8 +626,28 @@
         </div>
       </dialog>
 
+      <dialog class="info-dialog import-dialog" id="import-profile-dialog" aria-labelledby="import-profile-title">
+        <div class="info-shell">
+          <header class="info-header compact">
+            <div><span class="workspace-kicker">Environment handoff</span><h2 id="import-profile-title">Confirm profile import</h2></div>
+            <button type="button" class="settings-close" id="cancel-profile-import-x" aria-label="Cancel profile import">×</button>
+          </header>
+          <div class="import-profile-body">
+            <div class="profile-security-note strong">
+              <span aria-hidden="true">!</span>
+              <p><b>This replaces the current connection profile.</b> Splunk and LLM credentials, TLS choices, tuning, and audience settings will change immediately. Scenario and ticket data remain untouched.</p>
+            </div>
+            <div class="import-profile-summary" id="import-profile-summary"></div>
+          </div>
+          <footer class="import-profile-footer">
+            <button class="button secondary" type="button" id="cancel-profile-import">Cancel</button>
+            <button class="button primary" type="button" id="confirm-profile-import">Import and replace settings</button>
+          </footer>
+        </div>
+      </dialog>
+
       <div class="toast-region" id="toast-region" aria-live="polite"></div>
     </div>
-    <script src="/static/app.js?v=0.8.0" defer></script>
+    <script src="/static/app.js?v=0.9.0" defer></script>
   </body>
 </html>

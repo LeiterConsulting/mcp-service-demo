@@ -5,12 +5,13 @@ import json
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
@@ -54,7 +55,7 @@ def _runtime_agent(on_event: Callable[[Any], Awaitable[None] | None] | None = No
 app = FastAPI(
     title="MCP Service Demo",
     description="Agent host and service-desk API for the Splunk MCP demonstration.",
-    version="0.8.0",
+    version="0.9.0",
 )
 
 static_dir = Path(__file__).parent / "static"
@@ -74,6 +75,14 @@ class InvestigateRequest(BaseModel):
 
 class DemoSettingsUpdate(BaseModel):
     audience: Literal["executive", "engineering", "security", "finance"] = "executive"
+
+
+class PortableProfileRequest(BaseModel):
+    passphrase: str = Field(min_length=12, max_length=256)
+
+
+class PortableProfileImportRequest(PortableProfileRequest):
+    bundle: dict[str, Any]
 
 
 class TicketAssignmentUpdate(BaseModel):
@@ -182,6 +191,64 @@ async def update_demo_settings(update: DemoSettingsUpdate) -> dict[str, Any]:
         "message": f"{update.audience.title()} audience selected.",
         "settings": connection_store.safe_export_demo(),
     }
+
+
+@app.post("/api/settings/portable/export")
+async def export_portable_settings(update: PortableProfileRequest) -> JSONResponse:
+    base = get_environment_settings()
+    connection_store = SplunkConnectionStore.for_settings(base)
+    try:
+        bundle = connection_store.export_portable(base, update.passphrase)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    filename = f"mcp-service-demo-profile-{datetime.now(UTC):%Y%m%dT%H%M%SZ}.mcpdemo"
+    return JSONResponse(
+        {
+            "status": "success",
+            "filename": filename,
+            "bundle": bundle,
+        },
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.post("/api/settings/portable/preview")
+async def preview_portable_settings(update: PortableProfileImportRequest) -> JSONResponse:
+    base = get_environment_settings()
+    connection_store = SplunkConnectionStore.for_settings(base)
+    try:
+        summary = connection_store.preview_portable(base, update.bundle, update.passphrase)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(
+        {"status": "success", "summary": summary},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.post("/api/settings/portable/import")
+async def import_portable_settings(update: PortableProfileImportRequest) -> JSONResponse:
+    base = get_environment_settings()
+    connection_store = SplunkConnectionStore.for_settings(base)
+    try:
+        summary = connection_store.import_portable(base, update.bundle, update.passphrase)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(
+        {
+            "status": "success",
+            "message": (
+                "Demo profile imported. Splunk, LLM, tuning, and audience settings are active."
+            ),
+            "summary": summary,
+            "settings": {
+                "splunk": connection_store.safe_export(base),
+                "llm": connection_store.safe_export_llm(base),
+                "demo": connection_store.safe_export_demo(),
+            },
+        },
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.put("/api/settings/llm")

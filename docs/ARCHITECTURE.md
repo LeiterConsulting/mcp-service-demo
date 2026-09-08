@@ -104,6 +104,14 @@ volume, separate from resettable scenario data in `demo-data`. Existing profiles
 combined layout are copied into the settings volume automatically. A saved profile therefore takes
 effect without restarting the processes and survives **Reset demo**.
 
+For environment handoff, the settings store can produce a versioned `.mcpdemo` package encrypted
+with a user-supplied passphrase. Its protected profile contains the effective Splunk MCP, REST,
+HEC, TLS, scenario-contract, LLM, tuning, and audience values, including credentials inherited from
+environment defaults. Configured CA bundle contents are embedded and installed under the target's
+persistent settings directory. Import validates the package format, authentication tag, field
+types, operational limits, URLs, and certificates before replacing the active encrypted profile.
+Preview returns only hosts, modes, model, audience, and credential-presence metadata.
+
 ## Real versus synthetic
 
 Real during a live-mode demo:

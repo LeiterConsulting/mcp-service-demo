@@ -29,3 +29,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: docker build -t mcp-service-demo:ci .
+
+  installers:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate Bash installer
+        if: runner.os == 'Linux'
+        run: |
+          bash -n install.sh
+          ./install.sh --help
+      - name: Validate PowerShell installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\install.ps1 -Help

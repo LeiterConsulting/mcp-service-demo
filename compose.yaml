@@ -2,10 +2,12 @@ services:
   demo:
     build: .
     ports:
-      - "8100:8100"
-      - "8101:8101"
-      - "8102:8102"
-      - "8103:8103"
+      - "${DEMO_WEB_PORT:-8100}:8100"
+      - "${SPLUNK_MCP_PORT:-8101}:8101"
+      - "${TICKET_MCP_PORT:-8102}:8102"
+      - "${CATALOG_MCP_PORT:-8103}:8103"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       AGENT_MODE: ${AGENT_MODE:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -17,7 +19,10 @@ services:
       OPENAI_MAX_TOOL_CALLS: ${OPENAI_MAX_TOOL_CALLS:-12}
       OPENAI_MAX_OUTPUT_TOKENS: ${OPENAI_MAX_OUTPUT_TOKENS:-2000}
       OPENAI_MAX_PARALLEL_TOOLS: ${OPENAI_MAX_PARALLEL_TOOLS:-3}
-      SPLUNK_MCP_URL: http://127.0.0.1:8101/mcp
+      SPLUNK_MCP_URL: ${SPLUNK_MCP_URL:-http://127.0.0.1:8101/mcp}
+      SPLUNK_MCP_TOKEN: ${SPLUNK_MCP_TOKEN:-}
+      SPLUNK_MCP_VERIFY_SSL: ${SPLUNK_MCP_VERIFY_SSL:-true}
+      SPLUNK_MCP_CA_BUNDLE: ${SPLUNK_MCP_CA_BUNDLE:-}
       TICKET_MCP_URL: http://127.0.0.1:8102/mcp
       CATALOG_MCP_URL: http://127.0.0.1:8103/mcp
       SPLUNK_DATA_MODE: ${SPLUNK_DATA_MODE:-fixture}
@@ -38,7 +43,6 @@ services:
       SPLUNK_SEARCH_TIMEOUT_SECONDS: ${SPLUNK_SEARCH_TIMEOUT_SECONDS:-60}
       SPLUNK_INDEX_WAIT_SECONDS: ${SPLUNK_INDEX_WAIT_SECONDS:-30}
       SPLUNK_HEC_BATCH_SIZE: ${SPLUNK_HEC_BATCH_SIZE:-200}
-      CATALOG_MCP_PORT: ${CATALOG_MCP_PORT:-8103}
       SPLUNK_REST_CA_BUNDLE: ${SPLUNK_REST_CA_BUNDLE:-}
       SPLUNK_HEC_CA_BUNDLE: ${SPLUNK_HEC_CA_BUNDLE:-}
       DEMO_SPLUNK_CONFIG_PATH: /app/config/splunk-connection.enc
@@ -46,6 +50,7 @@ services:
     volumes:
       - demo-data:/app/data
       - demo-settings:/app/config
+      - ${DEMO_CERTS_PATH:-./certs}:/app/certs:ro
 
 volumes:
   demo-data:
